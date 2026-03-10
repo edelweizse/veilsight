@@ -61,6 +61,11 @@ namespace ss {
         st->last_meta = std::move(json);
     }
 
+    void MJPEGServer::push_metrics(std::string json) {
+        std::lock_guard<std::mutex> lk(metrics_mtx_);
+        last_metrics_json_ = std::move(json);
+    }
+
     std::vector<std::string> MJPEGServer::list_streams() const {
         std::lock_guard lk(streams_mtx_);
         std::vector<std::string> out;
@@ -189,6 +194,17 @@ namespace ss {
 
         impl_->svr.Get("/health", [](const httplib::Request&, httplib::Response& res) {
             res.set_content("ok", "text/plain");
+        });
+
+        impl_->svr.Get("/metrics", [this](const httplib::Request&, httplib::Response& res) {
+            std::string payload;
+            {
+                std::lock_guard<std::mutex> lk(metrics_mtx_);
+                payload = last_metrics_json_.empty() ? "{}" : last_metrics_json_;
+            }
+            res.set_content(payload, "application/json");
+            res.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+            res.set_header("Pragma", "no-cache");
         });
 
         server_thread_ = std::thread([this] {

@@ -16,9 +16,9 @@ The framework provides a modular architecture for real-time video frame ingestio
 | Component | Status                  |
 |-----------|-------------------------|
 | IngestionManager | Implemented             |
-| Inference | Planned                 |
+| Inference | WIP                     |
 | Analytics | Planned                 |
-| Anonymizer | Planned                 |
+| Anonymizer | Implemented             |
 | Encoder/Streamer | MJPEG now, later WebRTC |
 | UI | WIP                     |
 
@@ -88,6 +88,7 @@ If no configuration path is specified, the system defaults to `configs/webcam.ya
 The service initializes the following endpoints:
 - MJPEG video stream: `http://host:port/video/<src_id>/<profile>`
 - Metadata endpoint: `http://host:port/meta/<src_id>/<profile>`
+- Runtime metrics endpoint: `http://host:port/metrics`
 - Available streams: `http://host:port/streams`
 - Last frame from stream: `http://host:port/snapshot/<src_id>/<profile>`
 - Health: `http://host:port/health`
@@ -111,6 +112,10 @@ The interface is accessible at `http://localhost:8501`
 #### GET /meta/<src_id>/<profile>
 - **Content-Type**: `application/json`
 - **Description**: Frame metadata in JSON format
+
+#### GET /metrics
+- **Content-Type**: `application/json`
+- **Description**: Runtime performance metrics (detector/tracker/anonymizer/encoder latencies and FPS, per-stream stats, queue health)
 
 ### Metadata Response Format
 

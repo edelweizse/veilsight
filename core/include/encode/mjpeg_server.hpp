@@ -32,6 +32,7 @@ namespace ss {
 
         // optionally push JSON metadata
         void push_meta(const std::string& stream_key, std::string json);
+        void push_metrics(std::string json);
 
         void register_stream(const std::string& stream_key);
 
@@ -63,5 +64,8 @@ namespace ss {
 
         mutable std::mutex streams_mtx_;
         mutable std::unordered_map<std::string, std::shared_ptr<StreamState>> streams_;
+
+        mutable std::mutex metrics_mtx_;
+        std::string last_metrics_json_;
     };
 }

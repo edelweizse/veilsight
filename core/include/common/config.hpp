@@ -5,6 +5,111 @@
 #include <unordered_map>
 
 namespace ss {
+    struct YuNetModuleConfig {
+        std::string param_path = "models/detector/yunet/face_detection_yunet_2023mar.ncnn.param";
+        std::string bin_path = "models/detector/yunet/face_detection_yunet_2023mar.ncnn.bin";
+        int input_w = 640;
+        int input_h = 640;
+        float score_threshold = 0.6f;
+        float nms_threshold = 0.3f;
+        int top_k = 750;
+        int ncnn_threads = 1;
+    };
+
+    struct SCRFDModuleConfig {
+        std::string variant = "500m";
+        std::string param_path = "models/detector/scrfd_500m/scrfd_500m.ncnn.param";
+        std::string bin_path = "models/detector/scrfd_500m/scrfd_500m.ncnn.bin";
+        int input_w = 640;
+        int input_h = 640;
+        float score_threshold = 0.35f;
+        float nms_threshold = 0.3f;
+        int top_k = 750;
+        int ncnn_threads = 1;
+    };
+
+    struct YoloXModuleConfig {
+        std::string model_path = "models/detector/yolox/yolox_s.onnx";
+        int input_w = 640;
+        int input_h = 640;
+        float score_threshold = 0.35f;
+        float nms_threshold = 0.45f;
+        int top_k = 300;
+        int person_class_id = 0;
+        bool letterbox = true;
+        bool decoded_output = true;
+    };
+
+    struct DetectorModuleConfig {
+        std::string type = "yunet"; // yunet|scrfd|yolox
+        int workers = 1;
+        YuNetModuleConfig yunet;
+        SCRFDModuleConfig scrfd;
+        YoloXModuleConfig yolox;
+    };
+
+    struct DemoTrackerModuleConfig {
+        float high_thresh = 0.6f;
+        float low_thresh = 0.2f;
+        float match_iou_thresh = 0.3f;
+        float low_match_iou_thresh = 0.2f;
+        int min_hits = 2;
+        int max_missed = 20;
+    };
+
+    struct ByteTrackModuleConfig {
+        float high_thresh = 0.6f;
+        float low_thresh = 0.1f;
+        float new_track_thresh = 0.7f;
+        float match_iou_thresh = 0.8f;
+        float low_match_iou_thresh = 0.5f;
+        float unconfirmed_match_iou_thresh = 0.7f;
+        float duplicate_iou_thresh = 0.85f;
+        int track_buffer = 30;
+        float min_box_area = 10.0f;
+        bool fuse_score = true;
+    };
+
+    struct OCSortModuleConfig {
+        float det_thresh = 0.5f;
+        float low_det_thresh = 0.1f;
+        float iou_threshold = 0.3f;
+        float low_iou_threshold = 0.2f;
+        float inertia = 0.2f;
+        int delta_t = 3;
+        int min_hits = 3;
+        int max_age = 30;
+        float min_box_area = 10.0f;
+        bool use_byte = true;
+    };
+
+    struct TrackerModuleConfig {
+        std::string type = "demo"; // demo|bytetrack|ocsort
+        DemoTrackerModuleConfig demo;
+        ByteTrackModuleConfig bytetrack;
+        OCSortModuleConfig ocsort;
+    };
+
+    struct RecognizerModuleConfig {
+        std::string type = "none"; // none
+        int workers = 1;
+        std::string gallery_path;
+        float unknown_threshold = 0.0f;
+    };
+
+    struct ModulesConfig {
+        DetectorModuleConfig detector;
+        TrackerModuleConfig tracker;
+        RecognizerModuleConfig recognizer;
+    };
+
+    struct MetricsConfig {
+        bool enabled = true;
+        bool enable_http = true;
+        bool enable_ui_payload = true;
+        int log_interval_ms = 5000;
+    };
+
     struct WebcamConfig {
         std::string device;
         int width;
@@ -68,6 +173,8 @@ namespace ss {
 
     struct AppConfig {
         ServerConfig server;
+        ModulesConfig modules;
+        MetricsConfig metrics;
         std::vector<IngestConfig> streams;
     };
 

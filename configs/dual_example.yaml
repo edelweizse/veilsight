@@ -1,0 +1,138 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+modules:
+  detector:
+    # "yunet" | "scrfd"
+    type: "yunet"
+    workers: 3
+
+    yunet:
+      param_path: "models/detector/yunet/face_detection_yunet_2023mar.ncnn.param"
+      bin_path: "models/detector/yunet/face_detection_yunet_2023mar.ncnn.bin"
+      input_w: 640
+      input_h: 640
+      score_threshold: 0.35
+      nms_threshold: 0.3
+      top_k: 750
+      ncnn_threads: 1
+
+    scrfd:
+      # 25g | 500m | 25g_landmarks | 500m_landmarks | 10g
+      variant: "25g"
+      param_path: "models/detector/scrfd_10g/scrfd_25g_opt.ncnn.param"
+      bin_path: "models/detector/scrfd_10g/scrfd_25g_opt.ncnn.bin"
+      input_w: 640
+      input_h: 640
+      score_threshold: 0.35
+      nms_threshold: 0.3
+      top_k: 750
+      ncnn_threads: 1
+
+  tracker:
+    # "demo" | "bytetrack"
+    type: "demo"
+    demo:
+      high_thresh: 0.6
+      low_thresh: 0.2
+      match_iou_thresh: 0.3
+      low_match_iou_thresh: 0.2
+      min_hits: 2
+      max_missed: 20
+    bytetrack:
+      high_thresh: 0.45
+      low_thresh: 0.2
+      new_track_thresh: 0.45
+      match_iou_thresh: 0.35
+      low_match_iou_thresh: 0.25
+      unconfirmed_match_iou_thresh: 0.35
+      duplicate_iou_thresh: 0.85
+      track_buffer: 100
+      min_box_area: 0
+      fuse_score: true
+
+  recognizer:
+    type: "none"
+    workers: 1
+    gallery_path: ""
+    unknown_threshold: 0.0
+
+metrics:
+  enabled: true
+  enable_http: true
+  enable_ui_payload: true
+  log_interval_ms: 5000
+
+streams:
+#  - id: "rtsp0"
+#    type: "rtsp"
+#
+#    rtsp:
+#      url: "rtsp://rtspstream:iC_SMRxQh3s8d66xv1LBW@zephyr.rtsp.stream/pattern"
+#      tcp: true
+#      latency_ms: 1000
+#
+#    outputs:
+#      profiles:
+#        inference:
+#          width: 960
+#          height: 540
+#          fps: 10
+#          format: "BGR"
+#        ui:
+#          width: 960
+#          height: 540
+#          fps: 10
+#          jpeg_quality: 75
+#
+#    replicate:
+#      count: 2
+
+#  - id: "cam0"
+#    type: "webcam"
+#
+#    webcam:
+#      device: "/dev/video0"
+#      width: 1280
+#      height: 720
+#      fps: 15
+#      mjpg: true
+#
+#    outputs:
+#      profiles:
+#        inference:
+#          width: 640
+#          height: 640
+#          fps: 15
+#          format: "BGR"
+#        ui:
+#          width: 1280
+#          height: 720
+#          fps: 15
+#          jpeg_quality: 75
+#
+#    replicate:
+#      count: 1
+
+  - id: "file0"
+    type: "file"
+
+    file:
+      path: "../../../assets/output.mp4"
+      fps: 5
+
+    outputs:
+      fps: 10
+      profiles:
+        inference:
+          width: 640
+          height: 640
+          format: "BGR"
+        ui:
+          width: 1280
+          height: 720
+          jpeg_quality: 75
+
+    replicate:
+      count: 2

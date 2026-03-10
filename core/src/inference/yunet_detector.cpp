@@ -50,7 +50,7 @@ namespace ss {
 
     class YuNetDetector::Impl {
     public:
-        explicit Impl(const YuNetDetectorConfig& cfg) {
+        explicit Impl(const YuNetModuleConfig& cfg) {
             net_.opt.use_vulkan_compute = false;
             net_.opt.num_threads = std::max(1, cfg.ncnn_threads);
             workspace_pool_allocator_.set_size_compare_ratio(0.0f);
@@ -66,7 +66,7 @@ namespace ss {
             }
         }
 
-        std::vector<Box> detect(const cv::Mat& bgr, const YuNetDetectorConfig& cfg) const {
+        std::vector<Box> detect(const cv::Mat& bgr, const YuNetModuleConfig& cfg) {
             if (bgr.empty()) return {};
 
             ncnn::Mat in = ncnn::Mat::from_pixels_resize(
@@ -198,7 +198,7 @@ namespace ss {
         mutable ncnn::PoolAllocator workspace_pool_allocator_;
     };
 
-    YuNetDetector::YuNetDetector(YuNetDetectorConfig cfg)
+    YuNetDetector::YuNetDetector(YuNetModuleConfig cfg)
         : cfg_(std::move(cfg)),
           impl_(std::make_unique<Impl>(cfg_)) {}
 
@@ -206,7 +206,7 @@ namespace ss {
     YuNetDetector::YuNetDetector(YuNetDetector&&) noexcept = default;
     YuNetDetector& YuNetDetector::operator=(YuNetDetector&&) noexcept = default;
 
-    std::vector<Box> YuNetDetector::detect(const cv::Mat& bgr) const {
+    std::vector<Box> YuNetDetector::detect(const cv::Mat& bgr) {
         return impl_->detect(bgr, cfg_);
     }
 }

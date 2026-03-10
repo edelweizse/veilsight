@@ -2,6 +2,30 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+modules:
+  detector:
+    type: "yunet" # "scrfd"
+    workers:  2
+  tracker:
+    type: "bytetrack"
+    bytetrack:
+      high_thresh: 0.6
+      low_thresh: 0.1
+      new_track_thresh: 0.7
+      match_iou_thresh: 0.8
+      low_match_iou_thresh: 0.5
+      unconfirmed_match_iou_thresh: 0.7
+      duplicate_iou_thresh: 0.85
+      track_buffer: 30
+      min_box_area: 10.0
+      fuse_score: true
+
+metrics:
+  enabled: true
+  enable_http: true
+  enable_ui_payload: true
+  log_interval_ms: 5000
+
 streams:
 #  - id: "rtsp0"
 #    type: "rtsp"

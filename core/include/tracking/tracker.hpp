@@ -1,5 +1,7 @@
 #pragma once
 
+#include <common/config.hpp>
+
 #include <memory>
 #include <vector>
 
@@ -21,5 +23,16 @@ namespace ss {
         virtual std::vector<Box> update(const std::vector<Box>& detections) = 0;
     };
 
+    class ITrackerFactory {
+    public:
+        virtual ~ITrackerFactory() = default;
+        virtual std::unique_ptr<ITracker> create() const = 0;
+        virtual int backend_threads() const { return 1; }
+    };
+
     std::unique_ptr<ITracker> create_demo_tracker(const TrackerConfig& cfg = {});
+    std::unique_ptr<ITracker> create_bytetrack_tracker(const ByteTrackModuleConfig& cfg = {});
+    std::unique_ptr<ITracker> create_ocsort_tracker(const OCSortModuleConfig& cfg = {});
+    std::unique_ptr<ITrackerFactory> create_tracker_factory(const TrackerModuleConfig& cfg);
+    std::unique_ptr<ITracker> create_tracker(const TrackerModuleConfig& cfg);
 }

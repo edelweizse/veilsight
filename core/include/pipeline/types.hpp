@@ -21,6 +21,7 @@ namespace ss {
         std::string stream_id;
         int64_t frame_id = 0;
         int64_t pts_ns = 0;
+        uint64_t created_steady_ns = 0;
 
         // Map boxes from inference frame coordinates into UI frame coordinates:
         // ui = inf * scale + offset

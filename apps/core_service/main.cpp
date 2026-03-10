@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, handle_sigint);
     std::signal(SIGTERM, handle_sigint);
 
-    std::string cfg_path = "../../../configs/dual.yaml";
+    std::string cfg_path = "../../../configs/dual_example.yaml";
     if (argc >= 2) cfg_path = argv[1];
     else std::cerr << "Using default config: " << cfg_path << "\n";
 
@@ -40,26 +40,32 @@ int main(int argc, char** argv) {
     }
 
     ss::MJPEGServer server(cfg.server.url, cfg.server.port);
-    server.start();
+    if (!server.start()) {
+        std::cerr << "Server failed to start\n";
+        return 1;
+    }
 
     for (const auto& s : streams) {
         server.register_stream(s.id + "/ui");
-        server.register_stream(s.id + "/inf");
     }
 
     ss::PipelineRuntime::Options opt;
     opt.jpeg_quality = 75;
-    opt.inf_workers = 1;
-    opt.detector_ncnn_threads = 1;
-    opt.detector_score_thresh = 0.6f;
-    opt.detector_nms_thresh = 0.3f;
+    opt.detector = cfg.modules.detector;
+    opt.tracker = cfg.modules.tracker;
+    opt.recognizer = cfg.modules.recognizer;
+    opt.metrics = cfg.metrics;
 
     opt.anonymizer_method = "blur"; // "pixelate" | "blur"
     opt.anonymizer_pixelation_divisor = 15;
     opt.anonymizer_blur_kernel = 75;
 
     ss::PipelineRuntime rt(server, streams, opt);
-    rt.start();
+    if (!rt.start()) {
+        std::cerr << "Pipeline failed to start\n";
+        server.stop();
+        return 1;
+    }
 
     while (g_running) std::this_thread::sleep_for(std::chrono::milliseconds(200));
 

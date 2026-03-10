@@ -2,11 +2,23 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
 namespace ss {
     namespace {
+        TrackerConfig to_demo_tracker_config(const TrackerModuleConfig& cfg) {
+            TrackerConfig tcfg;
+            tcfg.high_thresh = cfg.demo.high_thresh;
+            tcfg.low_thresh = cfg.demo.low_thresh;
+            tcfg.match_iou_thresh = cfg.demo.match_iou_thresh;
+            tcfg.low_match_iou_thresh = cfg.demo.low_match_iou_thresh;
+            tcfg.min_hits = cfg.demo.min_hits;
+            tcfg.max_missed = cfg.demo.max_missed;
+            return tcfg;
+        }
+
         struct TrackState {
             int id = -1;
             Box box{};
@@ -229,9 +241,49 @@ namespace ss {
             int next_track_id_ = 1;
             std::vector<TrackState> tracks_;
         };
+
+        class DemoTrackerFactory final : public ITrackerFactory {
+        public:
+            explicit DemoTrackerFactory(TrackerConfig cfg)
+                : cfg_(std::move(cfg)) {}
+
+            std::unique_ptr<ITracker> create() const override {
+                return create_demo_tracker(cfg_);
+            }
+
+        private:
+            TrackerConfig cfg_;
+        };
+
+        class ByteTrackFactory final : public ITrackerFactory {
+        public:
+            explicit ByteTrackFactory(ByteTrackModuleConfig cfg)
+                : cfg_(std::move(cfg)) {}
+
+            std::unique_ptr<ITracker> create() const override {
+                return create_bytetrack_tracker(cfg_);
+            }
+
+        private:
+            ByteTrackModuleConfig cfg_;
+        };
     } // namespace
 
     std::unique_ptr<ITracker> create_demo_tracker(const TrackerConfig& cfg) {
         return std::make_unique<DemoTracker>(cfg);
+    }
+
+    std::unique_ptr<ITrackerFactory> create_tracker_factory(const TrackerModuleConfig& cfg) {
+        if (cfg.type.empty() || cfg.type == "demo") {
+            return std::make_unique<DemoTrackerFactory>(to_demo_tracker_config(cfg));
+        }
+        if (cfg.type == "bytetrack") {
+            return std::make_unique<ByteTrackFactory>(cfg.bytetrack);
+        }
+        throw std::invalid_argument("[Tracker] Unsupported tracker type: " + cfg.type);
+    }
+
+    std::unique_ptr<ITracker> create_tracker(const TrackerModuleConfig& cfg) {
+        return create_tracker_factory(cfg)->create();
     }
 }

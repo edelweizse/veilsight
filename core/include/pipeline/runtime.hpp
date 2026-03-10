@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -11,9 +12,12 @@
 #include <anonymization/anonymizer.hpp>
 #include <common/config.hpp>
 #include <encode/mjpeg_server.hpp>
-#include <inference/yunet_detector.hpp>
+#include <inference/detector.hpp>
+#include <inference/recognizer.hpp>
+#include <inference/stream_inference_state.hpp>
 #include <ingest/gst_dual_source.hpp>
 #include <pipeline/bounded_queue.hpp>
+#include <pipeline/metrics.hpp>
 #include <pipeline/types.hpp>
 
 namespace ss {
@@ -22,35 +26,28 @@ namespace ss {
         struct Options {
             int jpeg_quality = 75;
 
-            // queue capacities
-            size_t infer_in_cap = 50; // global detector pool input
-            size_t inf_state_in_cap = 5; // per-stream ordered inference state input
-            size_t det_res_cap = 20; // per-stream detector results
-            size_t anon_in_cap = 5; // per-stream tracked frame input
-            size_t enc_in_cap = 5; // per-stream encoder input
-            size_t analytics_cap = 256; // global tracker output
+            size_t infer_in_cap = 50;
+            size_t inf_state_in_cap = 5;
+            size_t det_res_cap = 20;
+            size_t recognizer_in_cap = 50;
+            size_t recognizer_done_cap = 20;
+            size_t anon_in_cap = 50;
+            size_t enc_in_cap = 5;
+            size_t analytics_cap = 256;
 
-            int inf_workers = 1;
+            int64_t reorder_window = 5;
+            size_t pending_state_limit = 500;
+            int anonymizer_workers = 1;
 
-            std::string detector_param_path = "models/detector/face_detection_yunet_2023mar.ncnn.param";
-            std::string detector_bin_path = "models/detector/face_detection_yunet_2023mar.ncnn.bin";
-            int detector_input_w = 640;
-            int detector_input_h = 640;
-            float detector_score_thresh = 0.6f;
-            float detector_nms_thresh = 0.3f;
-            int detector_top_k = 750;
-            int detector_ncnn_threads = 1;
+            DetectorModuleConfig detector;
+            TrackerModuleConfig tracker;
+            RecognizerModuleConfig recognizer;
 
             std::string anonymizer_method = "pixelate";
             int anonymizer_pixelation_divisor = 10;
             int anonymizer_blur_kernel = 31;
 
-            float tracker_high_thresh = 0.6f;
-            float tracker_low_thresh = 0.2f;
-            float tracker_match_iou_thresh = 0.3f;
-            float tracker_low_match_iou_thresh = 0.2f;
-            int tracker_min_hits = 2;
-            int tracker_max_missed = 20;
+            MetricsConfig metrics;
         };
 
         PipelineRuntime(MJPEGServer& server,
@@ -61,7 +58,7 @@ namespace ss {
         void stop();
         bool pop_tracker_output(TrackerFrameOutput& out, std::chrono::milliseconds timeout);
 
-        ~PipelineRuntime() { stop(); }
+        ~PipelineRuntime();
 
     private:
         struct StreamPipe {
@@ -69,35 +66,45 @@ namespace ss {
 
             BoundedQueue<FramePtr> inf_state_in;
             BoundedQueue<InferResults> det_res;
-            BoundedQueue<FramePtr> anon_in;
+            BoundedQueue<FramePtr> recognizer_done;
             BoundedQueue<FramePtr> enc_in;
+            std::unique_ptr<StreamInferenceState> inf_state;
+            std::map<int64_t, FramePtr> pending_recognized;
+            int64_t next_commit_frame_id = -1;
+            int64_t latest_queued_recognizer_frame_id = -1;
 
             std::thread ingest_thr;
             std::thread inf_state_thr;
-            std::thread anon_thr;
             std::thread enc_thr;
 
             StreamPipe(std::string id,
                        size_t inf_state_cap,
                        size_t det_res_queue_cap,
-                       size_t anon_cap,
+                       size_t recognizer_done_cap,
                        size_t enc_cap)
                 : stream_id(std::move(id)),
                   inf_state_in(inf_state_cap),
                   det_res(det_res_queue_cap),
-                  anon_in(anon_cap),
+                  recognizer_done(recognizer_done_cap),
                   enc_in(enc_cap) {}
         };
 
-        // workers
-        void ingest_loop_(const IngestConfig& cfg, std::unique_ptr<GstDualSource> src, StreamPipe* pipe);
-        void infer_loop_();
-        void infer_state_loop_(StreamPipe* pipe);
-        void anonymizer_loop_(StreamPipe* pipe);
-        void encoder_loop_(StreamPipe* pipe);
+        struct DetectorStage;
+        struct RecognizerStage;
 
-        // modules
-        std::vector<Box> run_inference_(const cv::Mat& inf_frame);
+        void ingest_loop_(const IngestConfig& cfg, std::unique_ptr<GstDualSource> src, StreamPipe* pipe);
+        void infer_state_loop_(StreamPipe* pipe);
+        void anonymizer_loop_();
+        void encoder_loop_(StreamPipe* pipe);
+        void metrics_loop_();
+
+        void enqueue_recognizer_(StreamPipe* pipe, const FramePtr& frame);
+        void publish_recognized_frame_(const FramePtr& frame);
+        void drain_recognized_ready_(StreamPipe* pipe);
+        void commit_frame_(const FramePtr& frame);
+        bool validate_thread_budget_(const IDetectorFactory& detector_factory,
+                                     const IRecognizerFactory& recognizer_factory) const;
+
         void anonymize_(cv::Mat& ui_frame,
                         const std::vector<Box>& boxes,
                         float sx,
@@ -111,22 +118,24 @@ namespace ss {
                           float tx,
                           float ty);
         void publish_tracker_output_(const FrameCtx& ctx, const std::vector<Box>& tracks);
+        std::map<std::string, QueueSnapshot> snapshot_queues_() const;
 
         MJPEGServer& server_;
         std::vector<IngestConfig> streams_;
         Options opt_;
 
         std::atomic<bool> running_{false};
-
-        // global detector pool input
-        BoundedQueue<FramePtr> infer_in_;
+        BoundedQueue<FramePtr> anon_in_;
         BoundedQueue<TrackerFrameOutput> analytics_out_;
 
         std::vector<std::unique_ptr<StreamPipe>> pipes_;
         std::unordered_map<std::string, StreamPipe*> pipes_by_stream_id_;
-        std::vector<std::thread> infer_pool_;
+        std::unique_ptr<DetectorStage> detector_stage_;
+        std::unique_ptr<RecognizerStage> recognizer_stage_;
+        std::vector<std::thread> anonymizer_pool_;
+        std::thread metrics_thr_;
 
-        std::shared_ptr<YuNetDetector> detector_;
         std::unique_ptr<Anonymizer> anonymizer_;
+        std::unique_ptr<RuntimeMetrics> metrics_;
     };
 }
