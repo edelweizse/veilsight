@@ -147,18 +147,11 @@ namespace veilsight {
             res.set_header("Connection", "close");
 
             const std::string boundary = "frame";
-            res.set_header("Content-Type", "multipart/x-mixed-replace; boundary=" + boundary);
-
-            res.set_chunked_content_provider(
+            res.set_header("X-Accel-Buffering", "no");
+            res.set_content_provider(
                 "multipart/x-mixed-replace; boundary=" + boundary,
                 [this, st, boundary](size_t /*offset*/, httplib::DataSink& sink) {
                     uint64_t last_sent = 0;
-                    {
-                        std::unique_lock lk(st->mtx);
-                        st->cv.wait(lk, [&] { return st->seq != 0 || !running_; });
-                        if (!running_) { sink.done(); return true; }
-                        last_sent = st->seq;;
-                    }
 
                     while (running_) {
                         std::shared_ptr<const std::vector<uint8_t>> jpeg;
