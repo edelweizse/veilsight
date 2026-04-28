@@ -11,17 +11,18 @@
 
 #include <anonymization/anonymizer.hpp>
 #include <common/config.hpp>
-#include <encode/mjpeg_server.hpp>
 #include <inference/detector.hpp>
 #include <inference/recognizer.hpp>
 #include <inference/stream_inference_state.hpp>
 #include <ingest/gst_dual_source.hpp>
 #include <pipeline/bounded_queue.hpp>
+#include <pipeline/lifecycle.hpp>
 #include <pipeline/metrics.hpp>
+#include <pipeline/publishers.hpp>
 #include <pipeline/types.hpp>
 
 namespace veilsight {
-    class PipelineRuntime {
+    class PipelineRuntime : public IPipelineLifecycle {
     public:
         struct Options {
             int jpeg_quality = 75;
@@ -50,12 +51,14 @@ namespace veilsight {
             MetricsConfig metrics;
         };
 
-        PipelineRuntime(MJPEGServer& server,
+        PipelineRuntime(IStreamPublisher& stream_publisher,
+                        ITelemetryPublisher& telemetry_publisher,
                         std::vector<IngestConfig> streams,
                         Options opt);
 
-        bool start();
-        void stop();
+        bool start() override;
+        void stop() override;
+        bool is_running() const override;
         bool pop_tracker_output(TrackerFrameOutput& out, std::chrono::milliseconds timeout);
 
         ~PipelineRuntime();
@@ -120,7 +123,8 @@ namespace veilsight {
         void publish_tracker_output_(const FrameCtx& ctx, const std::vector<Box>& tracks);
         std::map<std::string, QueueSnapshot> snapshot_queues_() const;
 
-        MJPEGServer& server_;
+        IStreamPublisher& stream_publisher_;
+        ITelemetryPublisher& telemetry_publisher_;
         std::vector<IngestConfig> streams_;
         Options opt_;
 

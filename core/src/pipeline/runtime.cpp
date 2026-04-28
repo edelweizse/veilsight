@@ -41,10 +41,12 @@ namespace veilsight {
         std::vector<std::thread> workers;
     };
 
-    PipelineRuntime::PipelineRuntime(MJPEGServer& server,
+    PipelineRuntime::PipelineRuntime(IStreamPublisher& stream_publisher,
+                                     ITelemetryPublisher& telemetry_publisher,
                                      std::vector<IngestConfig> streams,
                                      Options opt)
-        : server_(server),
+        : stream_publisher_(stream_publisher),
+          telemetry_publisher_(telemetry_publisher),
           streams_(std::move(streams)),
           opt_(opt),
           anon_in_(opt.anon_in_cap),
@@ -281,6 +283,10 @@ namespace veilsight {
         metrics_.reset();
     }
 
+    bool PipelineRuntime::is_running() const {
+        return running_.load(std::memory_order_relaxed);
+    }
+
     bool PipelineRuntime::pop_tracker_output(TrackerFrameOutput& out, std::chrono::milliseconds timeout) {
         return analytics_out_.pop_for(out, timeout);
     }
@@ -466,7 +472,7 @@ namespace veilsight {
             if (!ctx || ctx->ui.empty()) continue;
             const uint64_t encoder_t0_ns = steady_now_ns();
 
-            server_.push_jpeg(ui_key, ctx->ui, opt_.jpeg_quality);
+            stream_publisher_.publish_frame(ui_key, ctx->ui, opt_.jpeg_quality);
 
             std::string ui_meta =
                 "{"
@@ -478,7 +484,7 @@ namespace veilsight {
                 "\"h\":" + std::to_string(ctx->ui.rows) + ","
                 "\"tracks\":" + std::to_string(ctx->tracked_boxes.size()) +
                 "}";
-            server_.push_meta(ui_key, std::move(ui_meta));
+            stream_publisher_.publish_metadata(ui_key, std::move(ui_meta));
 
             if (metrics_) {
                 const uint64_t encoder_t1_ns = steady_now_ns();
@@ -576,7 +582,10 @@ namespace veilsight {
         out.frame_id = ctx.frame_id;
         out.pts_ns = ctx.pts_ns;
         out.tracks = tracks;
+        out.width = ctx.ui_w;
+        out.height = ctx.ui_h;
         analytics_out_.push_drop_oldest(std::move(out));
+        telemetry_publisher_.publish_frame_analytics(ctx, tracks);
     }
 
     std::map<std::string, QueueSnapshot> PipelineRuntime::snapshot_queues_() const {
@@ -623,8 +632,9 @@ namespace veilsight {
             const std::string json = metrics_snapshot_to_json(snap, queues);
 
             if (opt_.metrics.enable_http || opt_.metrics.enable_ui_payload) {
-                server_.push_metrics(json);
+                stream_publisher_.publish_metrics(json);
             }
+            telemetry_publisher_.publish_metrics_snapshot(snap, queues);
 
             const auto now = std::chrono::steady_clock::now();
             if (now < next_log) continue;

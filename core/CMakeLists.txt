@@ -35,11 +35,15 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GST REQUIRED IMPORTED_TARGET gstreamer-1.0)
 pkg_check_modules(GST_APP REQUIRED IMPORTED_TARGET gstreamer-app-1.0)
 pkg_check_modules(GST_VIDEO REQUIRED IMPORTED_TARGET gstreamer-video-1.0)
+pkg_check_modules(GST_ALLOCATORS REQUIRED IMPORTED_TARGET gstreamer-allocators-1.0)
+pkg_check_modules(PCRE2 REQUIRED IMPORTED_TARGET libpcre2-8)
 
 target_link_libraries(veilsight_core PRIVATE
         PkgConfig::GST
         PkgConfig::GST_APP
         PkgConfig::GST_VIDEO
+        PkgConfig::GST_ALLOCATORS
+        PkgConfig::PCRE2
 )
 
 # YAML

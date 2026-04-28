@@ -52,6 +52,8 @@ namespace veilsight {
         std::string stream_id;
         int64_t frame_id = 0;
         int64_t pts_ns = 0;
+        int width = 0;
+        int height = 0;
         std::vector<Box> tracks;
     };
 }

@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package veilsight.runner.v1;
+
+service PipelineControlService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc GetStatus(GetStatusRequest) returns (PipelineStatus);
+  rpc GetStreams(GetStreamsRequest) returns (StreamList);
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+  rpc Start(StartRequest) returns (PipelineCommandResponse);
+  rpc Stop(StopRequest) returns (PipelineCommandResponse);
+  rpc Reload(ReloadRequest) returns (PipelineCommandResponse);
+}
+
+service RunnerTelemetryService {
+  rpc WatchTelemetry(WatchTelemetryRequest) returns (stream TelemetryEvent);
+  rpc GetMetricsSnapshot(GetMetricsSnapshotRequest) returns (MetricsSnapshot);
+}
+
+message HealthRequest {
+  string controller_id = 1;
+}
+
+message HealthResponse {
+  bool ok = 1;
+  string runner_id = 2;
+  string version = 3;
+  uint64 timestamp_ms = 4;
+}
+
+message GetStatusRequest {}
+
+message GetStreamsRequest {}
+
+message ValidateConfigRequest {
+  string config_yaml = 1;
+}
+
+message ValidateConfigResponse {
+  bool valid = 1;
+  repeated string errors = 2;
+}
+
+message StartRequest {
+  string config_yaml = 1;
+}
+
+message StopRequest {}
+
+message ReloadRequest {
+  string config_yaml = 1;
+}
+
+message PipelineCommandResponse {
+  bool accepted = 1;
+  string message = 2;
+  PipelineStatus status = 3;
+}
+
+message PipelineStatus {
+  string runner_id = 1;
+  bool running = 2;
+  string state = 3;
+  string message = 4;
+  uint64 timestamp_ms = 5;
+  repeated StreamRef streams = 6;
+}
+
+message StreamRef {
+  string stream_id = 1;
+  string profile = 2;
+  bool webrtc_available = 3;
+}
+
+message StreamList {
+  repeated StreamRef streams = 1;
+  string public_base_url = 2;
+}
+
+message WatchTelemetryRequest {
+  repeated string stream_ids = 1;
+  bool include_frame_analytics = 2;
+  bool include_metrics = 3;
+  bool include_logs = 4;
+}
+
+message GetMetricsSnapshotRequest {}
+
+message Track {
+  int32 id = 1;
+  float x = 2;
+  float y = 3;
+  float w = 4;
+  float h = 5;
+  float score = 6;
+  bool occluded = 7;
+}
+
+message FrameAnalytics {
+  StreamRef stream = 1;
+  int64 frame_id = 2;
+  int64 pts_ns = 3;
+  int32 width = 4;
+  int32 height = 5;
+  repeated Track tracks = 6;
+}
+
+message QueueSnapshot {
+  string name = 1;
+  uint64 size = 2;
+  uint64 capacity = 3;
+  uint64 dropped = 4;
+}
+
+message StageMetrics {
+  string stage = 1;
+  uint64 count = 2;
+  uint64 errors = 3;
+  double fps = 4;
+  double avg_ms = 5;
+  double p50_ms = 6;
+  double p95_ms = 7;
+  double p99_ms = 8;
+}
+
+message StreamStageMetrics {
+  StreamRef stream = 1;
+  repeated StageMetrics stages = 2;
+}
+
+message MetricsSnapshot {
+  uint64 timestamp_ms = 1;
+  double uptime_s = 2;
+  repeated StageMetrics global = 3;
+  repeated StreamStageMetrics streams = 4;
+  repeated QueueSnapshot queues = 5;
+}
+
+message RunnerLogEvent {
+  uint64 timestamp_ms = 1;
+  string level = 2;
+  string message = 3;
+}
+
+message TelemetryEvent {
+  oneof payload {
+    FrameAnalytics frame = 1;
+    MetricsSnapshot metrics = 2;
+    PipelineStatus status = 3;
+    RunnerLogEvent log = 4;
+  }
+}

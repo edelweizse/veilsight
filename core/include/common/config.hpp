@@ -167,16 +167,59 @@ namespace veilsight {
     };
 
     struct ServerConfig {
-        std::string url;
-        int port;
+        std::string url = "0.0.0.0";
+        int port = 8080;
+    };
+
+    struct ControllerConfig {
+        std::string host = "0.0.0.0";
+        int port = 8000;
+    };
+
+    struct RunnerGrpcConfig {
+        std::string listen = "unix:///tmp/veilsight-runner.sock";
+        std::string fallback_tcp = "127.0.0.1:9090";
+    };
+
+    struct RunnerConfig {
+        std::string id = "edge-0";
+        RunnerGrpcConfig grpc;
+        std::string public_base_url = "http://localhost:8080";
+    };
+
+    struct StreamingConfig {
+        struct WebRTCConfig {
+            bool enabled = true;
+            int max_peers_per_stream = 2;
+            int ice_gathering_timeout_ms = 2000;
+            int session_idle_timeout_s = 30;
+            std::vector<std::string> stun_servers;
+            std::vector<std::string> cors_allowed_origins = {
+                "http://localhost:8000",
+                "http://localhost:5173",
+            };
+        };
+
+        std::string primary = "webrtc";
+        std::string fallback = "mjpeg";
+        std::string codec = "h264";
+        std::string encoder = "auto";
+        int bitrate_kbps = 2500;
+        int keyframe_interval_frames = 30;
+        WebRTCConfig webrtc;
     };
 
     struct AppConfig {
         ServerConfig server;
+        ControllerConfig controller;
+        RunnerConfig runner;
+        StreamingConfig streaming;
         ModulesConfig modules;
         MetricsConfig metrics;
         std::vector<IngestConfig> streams;
     };
 
     AppConfig load_config_yaml(const std::string& path);
+    AppConfig load_config_yaml_string(const std::string& yaml);
+    void validate_config(const AppConfig& config);
 }

@@ -1,1 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+
+add_executable(veilsight_config_tests config_tests.cpp)
+target_link_libraries(veilsight_config_tests PRIVATE veilsight_core)
+add_test(NAME veilsight_config_tests COMMAND veilsight_config_tests)

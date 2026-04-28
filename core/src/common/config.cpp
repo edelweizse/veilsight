@@ -256,13 +256,64 @@ namespace veilsight {
         return cfg;
     }
 
-    AppConfig load_config_yaml(const std::string& path) {
+    static ControllerConfig parse_controller_config(const YAML::Node& n) {
+        ControllerConfig cfg;
+        if (!n) return cfg;
+        cfg.host = get_str(n, "host", cfg.host);
+        cfg.port = get_int(n, "port", cfg.port);
+        return cfg;
+    }
+
+    static RunnerGrpcConfig parse_runner_grpc_config(const YAML::Node& n) {
+        RunnerGrpcConfig cfg;
+        if (!n) return cfg;
+        cfg.listen = get_str(n, "listen", cfg.listen);
+        cfg.fallback_tcp = get_str(n, "fallback_tcp", cfg.fallback_tcp);
+        return cfg;
+    }
+
+    static RunnerConfig parse_runner_config(const YAML::Node& n) {
+        RunnerConfig cfg;
+        if (!n) return cfg;
+        cfg.id = get_str(n, "id", cfg.id);
+        cfg.grpc = parse_runner_grpc_config(n["grpc"]);
+        cfg.public_base_url = get_str(n, "public_base_url", cfg.public_base_url);
+        return cfg;
+    }
+
+    static StreamingConfig parse_streaming_config(const YAML::Node& n) {
+        StreamingConfig cfg;
+        if (!n) return cfg;
+        cfg.primary = get_str(n, "primary", cfg.primary);
+        cfg.fallback = get_str(n, "fallback", cfg.fallback);
+        cfg.codec = get_str(n, "codec", cfg.codec);
+        cfg.encoder = get_str(n, "encoder", cfg.encoder);
+        cfg.bitrate_kbps = get_int(n, "bitrate_kbps", cfg.bitrate_kbps);
+        cfg.keyframe_interval_frames = get_int(n, "keyframe_interval_frames", cfg.keyframe_interval_frames);
+
+        const YAML::Node wrtc = n["webrtc"];
+        if (wrtc) {
+            cfg.webrtc.enabled = get_bool(wrtc, "enabled", cfg.webrtc.enabled);
+            cfg.webrtc.max_peers_per_stream = get_int(wrtc, "max_peers_per_stream", cfg.webrtc.max_peers_per_stream);
+            cfg.webrtc.ice_gathering_timeout_ms = get_int(wrtc, "ice_gathering_timeout_ms", cfg.webrtc.ice_gathering_timeout_ms);
+            cfg.webrtc.session_idle_timeout_s = get_int(wrtc, "session_idle_timeout_s", cfg.webrtc.session_idle_timeout_s);
+            if (wrtc["stun_servers"]) cfg.webrtc.stun_servers = wrtc["stun_servers"].as<std::vector<std::string>>();
+            if (wrtc["cors_allowed_origins"]) {
+                cfg.webrtc.cors_allowed_origins = wrtc["cors_allowed_origins"].as<std::vector<std::string>>();
+            }
+        }
+        return cfg;
+    }
+
+    static AppConfig parse_config_yaml_node(const YAML::Node& root) {
         AppConfig cfg;
-        YAML::Node root = YAML::LoadFile(path);
 
         const YAML::Node srv = root["server"];
         cfg.server.url = get_str(srv, "host", "0.0.0.0");
         cfg.server.port = get_int(srv, "port", 8080);
+        cfg.controller = parse_controller_config(root["controller"]);
+        cfg.runner = parse_runner_config(root["runner"]);
+        cfg.streaming = parse_streaming_config(root["streaming"]);
         cfg.modules = parse_modules_config(root["modules"]);
         cfg.metrics = parse_metrics_config(root["metrics"]);
 
@@ -281,8 +332,14 @@ namespace veilsight {
             ic.rtsp = parse_rtsp_config(s["rtsp"]);
 
             ic.replicate = parse_replicate_config(s["replicate"]);
+            if (s["output"]) {
+                throw std::runtime_error("[Config] stream.output is deprecated; use stream.outputs.profiles");
+            }
             ic.output = parse_output_config(s["output"], OutputConfig{});
             ic.outputs = parse_outputs_config(s["outputs"]);
+            if (ic.outputs.profiles.size() > 0 && ic.outputs.fps <= 0) {
+                throw std::runtime_error("[Config] outputs.fps must be > 0 when outputs.profiles is configured");
+            }
 
             if (ic.type == "rtsp" && ic.rtsp.url.empty()) {
                 throw std::runtime_error ("[Config] RTSP stream " + ic.id + " has empty URL!");
@@ -290,6 +347,43 @@ namespace veilsight {
 
             cfg.streams.push_back(std::move(ic));
         }
+        validate_config(cfg);
         return cfg;
+    }
+
+    AppConfig load_config_yaml(const std::string& path) {
+        return parse_config_yaml_node(YAML::LoadFile(path));
+    }
+
+    AppConfig load_config_yaml_string(const std::string& yaml) {
+        return parse_config_yaml_node(YAML::Load(yaml));
+    }
+
+    void validate_config(const AppConfig& config) {
+        const auto& s = config.streaming;
+        if (s.primary != "webrtc" && s.primary != "mjpeg") {
+            throw std::runtime_error("[Config] streaming.primary must be 'webrtc' or 'mjpeg'");
+        }
+        if (s.fallback != "mjpeg" && s.fallback != "none") {
+            throw std::runtime_error("[Config] streaming.fallback must be 'mjpeg' or 'none'");
+        }
+        if (s.codec != "h264") {
+            throw std::runtime_error("[Config] streaming.codec must be 'h264'");
+        }
+        if (s.bitrate_kbps <= 0) {
+            throw std::runtime_error("[Config] streaming.bitrate_kbps must be > 0");
+        }
+        if (s.keyframe_interval_frames <= 0) {
+            throw std::runtime_error("[Config] streaming.keyframe_interval_frames must be > 0");
+        }
+        if (s.webrtc.max_peers_per_stream < 1) {
+            throw std::runtime_error("[Config] streaming.webrtc.max_peers_per_stream must be >= 1");
+        }
+        if (s.webrtc.ice_gathering_timeout_ms < 250 || s.webrtc.ice_gathering_timeout_ms > 10000) {
+            throw std::runtime_error("[Config] streaming.webrtc.ice_gathering_timeout_ms must be between 250 and 10000");
+        }
+        if (s.webrtc.session_idle_timeout_s < 1) {
+            throw std::runtime_error("[Config] streaming.webrtc.session_idle_timeout_s must be >= 1");
+        }
     }
 }
