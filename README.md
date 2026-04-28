@@ -1,153 +1,126 @@
-# Veilsight: ARM-Targeted PPFR Framework
+# Veilsight
 
-## Abstract
+Veilsight is a two-service privacy-preserving video pipeline.
 
-This project implements PPFR framework designed for deployment on resource-constrained embedded systems, specifically targeting Raspberry Pi. The system serves as the foundational infrastructure for a Privacy-Preserving Face Recognition (PPFR) research project, developed as part of a Bachelor of Science diploma thesis.
+## Architecture
 
-## Introduction
+```text
+Browser  -> Runner      WebRTC/WHEP video, MJPEG fallback, snapshots, metadata
+Browser  -> Controller  HTTP API, WebSockets, React dashboard
+Controller -> Runner    gRPC control/config/telemetry over UDS by default
+Runner   -> Controller  Telemetry stream cached and fanned out over WebSockets
+```
 
-The framework provides a modular architecture for real-time video frame ingestion, models inference and streaming the results. The current implementation focuses on efficient frame ingestion and MJPEG streaming, with planned extensions for detection, tracking, recognition, and analytics modules.
-## System Architecture
+The Runner owns ingest, inference, anonymization, metrics, MJPEG fallback, and the direct browser video endpoint. The Controller owns browser APIs, config persistence, lifecycle commands, telemetry cache, WebSocket fanout, and production serving of the React app in `web/dist`. `ui/app.py` remains as a legacy development fallback.
 
-![](architecture.png)
+## Build
 
-## Development Status
+```bash
+cmake -S . -B build
+cmake --build build -j2
+ctest --test-dir build --output-on-failure
+```
 
-| Component | Status                  |
-|-----------|-------------------------|
-| IngestionManager | Implemented             |
-| Inference | WIP                     |
-| Analytics | Planned                 |
-| Anonymizer | Implemented             |
-| Encoder/Streamer | MJPEG now, later WebRTC |
-| UI | WIP                     |
+Python controller setup:
 
-## Target Platform Specifications
+```bash
+python -m pip install -r controller/requirements.txt
+scripts/generate_proto_python.sh
+PYTHONPATH=controller/generated:. pytest controller/tests
+```
 
-- **Primary Platform**: Raspberry Pi
-- **Compatible Platforms**: ARM-based single-board computers
-- **Architecture Support**: aarch64
-- **Operating System**: Linux-based distributions (Raspberry Pi OS, Ubuntu ARM, etc.)
+React dashboard:
 
-## Requirements
+```bash
+npm --prefix web install
+npm --prefix web test
+npm --prefix web run build
+```
 
-### Build Dependencies
+## Runtime
 
-- CMake 3.16 or higher
-- C++20 compatible compiler (GCC/Clang)
-- OpenCV
-- GStreamer 1.0 and development libraries
-- yaml-cpp library
-- [httplib](https://github.com/yhirose/cpp-httplib)
+Runner:
 
-### Runtime Dependencies
+```bash
+./build/apps/core_service/veilsight_core_service configs/dual_example.yaml
+```
 
-- Python 3.x
-- Streamlit
-- requests library
+Controller:
+
+```bash
+PYTHONPATH=controller/generated:. fastapi dev
+```
+
+React dev server:
+
+```bash
+npm --prefix web run dev
+```
+
+In production, build the React app and run the Controller; FastAPI serves `web/dist` at `/`.
 
 ## Configuration
 
-System configuration is managed through YAML files located in the `configs/` directory. Example config.yaml:
+Default same-device gRPC transport:
 
 ```yaml
-server:
-  host: "0.0.0.0"
-  port: 8080
-streams:
-  - id: "rtsp0"
-    type: "rtsp" # file|webcam|rtsp
+runner:
+  grpc:
+    listen: "unix:///tmp/veilsight-runner.sock"
+    fallback_tcp: "127.0.0.1:9090"
+  public_base_url: "http://localhost:8080"
 
-    rtsp:
-      url: "rtsp://example/url"
-      tcp: true
-      fps: 15
-      latency_ms: 1000
-
-    output:
-      width: 1280
-      height: 720
-      keep_aspect: true
-      interp: "linear" # linear|cubic|area|nearest
-      jpeg_quality: 85
-
-    replicate:
-      count: 2
+streaming:
+  primary: "webrtc"
+  fallback: "mjpeg"
+  codec: "h264"
+  encoder: "auto"
+  bitrate_kbps: 2500
+  keyframe_interval_frames: 30
+  webrtc:
+    enabled: true
+    max_peers_per_stream: 2
+    ice_gathering_timeout_ms: 2000
+    session_idle_timeout_s: 30
+    stun_servers: []
+    cors_allowed_origins:
+      - "http://localhost:8000"
+      - "http://localhost:5173"
 ```
 
-## Usage
+Reload is whole-pipeline: the Runner validates first, stops the old pipeline, starts the new one, and attempts rollback to the previous config if the new start fails.
 
-### Core Service Execution
+## APIs
 
-```bash
-./build/apps/core_service/veilsight_core_service [config_path]
-```
+Runner gRPC services:
 
-If no configuration path is specified, the system defaults to `configs/webcam.yaml`.
+- `PipelineControlService`: `Health`, `GetStatus`, `GetStreams`, `ValidateConfig`, `Start`, `Stop`, `Reload`
+- `RunnerTelemetryService`: `WatchTelemetry`, `GetMetricsSnapshot`
 
-The service initializes the following endpoints:
-- MJPEG video stream: `http://host:port/video/<src_id>/<profile>`
-- Metadata endpoint: `http://host:port/meta/<src_id>/<profile>`
-- Runtime metrics endpoint: `http://host:port/metrics`
-- Available streams: `http://host:port/streams`
-- Last frame from stream: `http://host:port/snapshot/<src_id>/<profile>`
-- Health: `http://host:port/health`
+Controller HTTP/WS:
 
-### Web Interface
+- `GET /api/health`
+- `GET /api/config`, `PUT /api/config`, `POST /api/config/validate`
+- `POST /api/pipeline/start`, `POST /api/pipeline/stop`, `POST /api/pipeline/reload`
+- `GET /api/pipeline/status`, `GET /api/streams`, `GET /api/metrics`, `GET /api/analytics/latest`
+- `WS /ws/analytics`, `WS /ws/metrics`
 
-```bash
-streamlit run ui/app.py
-```
+Runner HTTP:
 
-The interface is accessible at `http://localhost:8501` 
+- `GET /health`
+- `GET /streams`
+- `GET /metrics`
+- `GET /meta/<stream_id>/<profile>`
+- `GET /snapshot/<stream_id>/<profile>`
+- `GET /video/<stream_id>/<profile>`
+- `POST /webrtc/whep/<stream_id>/<profile>`
+- `DELETE /webrtc/whep/sessions/<session_id>`
+- `PATCH /webrtc/whep/sessions/<session_id>` returns `501` until trickle ICE is implemented
 
-## API Specification
+## Troubleshooting
 
-### Endpoints
-
-#### GET /video/<src_id>/<profile>
-- **Content-Type**: `multipart/x-mixed-replace; boundary=--boundary`
-- **Description**: Continuous MJPEG video stream
-
-#### GET /meta/<src_id>/<profile>
-- **Content-Type**: `application/json`
-- **Description**: Frame metadata in JSON format
-
-#### GET /metrics
-- **Content-Type**: `application/json`
-- **Description**: Runtime performance metrics (detector/tracker/anonymizer/encoder latencies and FPS, per-stream stats, queue health)
-
-### Metadata Response Format
-
-```json
-{
-  "stream_id": "rtsp0_0",
-  "profile": "main",
-  "frame_id":425,
-  "pts_ns":103806765745,
-  "w":1280,
-  "h":720
-}
-```
-
-## Project Structure
-
-```
-.
-├── apps/
-│   └── core_service/          # Main application entry point
-├── core/                      # Core library implementation
-│   ├── include/               # Header files
-│   └── src/                   # Implementation files
-├── configs/                   # Configuration files
-├── tests/                     # Unit and integration tests
-└── ui/                        # Streamlit web interface
-```
-
-## Performance Optimization
-
-For optimal performance on ARM platforms:
-
-1. **Resolution**: Use 640x480 or 800x600 for real-time processing
-2. **Frame Rate**: Limit to 15-20 FPS if frame drops occur
-4. **Memory**: Monitor memory usage; consider frame buffer size reduction if needed
+- Missing `webrtcbin`: install GStreamer WebRTC plugins. Runner still starts with MJPEG fallback and reports WebRTC unavailable.
+- Missing H.264 encoder: install one of `v4l2h264enc`, `vaapih264enc`, `nvh264enc`, `x264enc`, or `openh264enc`, or set `streaming.encoder` to an installed encoder.
+- Protobuf mismatch: CMake checks `protoc` against pkg-config protobuf and fails early if major/minor versions differ.
+- Unix socket permissions: remove stale `/tmp/veilsight-runner.sock` or run Runner/Controller under users that can access it.
+- CORS failures: add the Controller or Vite origin to `streaming.webrtc.cors_allowed_origins`.

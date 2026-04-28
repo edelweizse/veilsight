@@ -2,6 +2,25 @@ server:
   host: "0.0.0.0"
   port: 8080
 
+controller:
+  host: "0.0.0.0"
+  port: 8000
+
+runner:
+  id: "edge-0"
+  grpc:
+    listen: "unix:///tmp/veilsight-runner.sock"
+    fallback_tcp: "127.0.0.1:9090"
+  public_base_url: "http://localhost:8080"
+
+streaming:
+  primary: "webrtc"
+  fallback: "mjpeg"
+  codec: "h264"
+  encoder: "auto"
+  bitrate_kbps: 2500
+  keyframe_interval_frames: 30
+
 streams:
   - id: "cam0"
     type: "webcam"
@@ -13,12 +32,21 @@ streams:
       fps: 15
       mjpg: true
 
-    output:
-      width: 1280
-      height: 720
-      keep_aspect: true
-      interp: "linear"
-      jpeg_quality: 75
+    outputs:
+      fps: 15
+      profiles:
+        inference:
+          width: 640
+          height: 640
+          keep_aspect: true
+          interp: "linear"
+          format: "BGR"
+        ui:
+          width: 1280
+          height: 720
+          keep_aspect: true
+          interp: "linear"
+          jpeg_quality: 75
 
     replicate:
       count: 1

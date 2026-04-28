@@ -1,0 +1,6 @@
+fastapi
+grpcio
+grpcio-tools
+protobuf
+PyYAML
+uvicorn[standard]

@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/api/client.ts","./src/api/ws.ts","./src/components/TrackOverlay.tsx","./src/components/WebRTCPlayer.tsx","./src/test/setup.ts","./tests/app.test.tsx"],"version":"5.9.3"}
