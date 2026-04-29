@@ -133,6 +133,34 @@ streaming:
 
 Reload is whole-pipeline: the Runner validates first, stops the old pipeline, starts the new one, and attempts rollback to the previous config if the new start fails.
 
+## Controller Analytics
+
+The Controller owns MVP analytics in SQLite. The Runner still sends per-frame `FrameAnalytics` track telemetry; the Controller enqueues it with a bounded non-blocking queue, computes overlays/events/snapshots in a background worker, and persists only numeric geometry, rule definitions, events, and aggregate snapshots.
+
+Default controller analytics settings can be overridden with environment variables:
+
+```yaml
+analytics:
+  enabled: true
+  db_path: "data/veilsight_analytics.sqlite3"
+  ingest_queue_capacity: 2000
+  snapshot_interval_ms: 500
+  heatmap:
+    rows: 36
+    cols: 64
+    decay_half_life_s: 900
+  routes:
+    max_points_per_track: 256
+    simplify_epsilon_px: 3
+    min_route_support: 3
+  retention:
+    raw_track_samples_days: null
+    events_days: null
+    aggregate_snapshots_days: null
+```
+
+`null` retention means the Controller does not prune that table automatically. Current retention and queue drop counters are returned by `GET /api/analytics/summary`, so operators can verify pruning is explicitly configured.
+
 ## APIs
 
 Runner gRPC services:
@@ -146,7 +174,9 @@ Controller HTTP/WS:
 - `GET /api/config`, `PUT /api/config`, `POST /api/config/validate`
 - `POST /api/pipeline/start`, `POST /api/pipeline/stop`, `POST /api/pipeline/reload`
 - `GET /api/pipeline/status`, `GET /api/streams`, `GET /api/metrics`, `GET /api/analytics/latest`
-- `WS /ws/analytics`, `WS /ws/metrics`
+- `GET /api/analytics/rules`, `POST /api/analytics/rules`, `PUT /api/analytics/rules/{rule_id}`, `DELETE /api/analytics/rules/{rule_id}`
+- `GET /api/analytics/summary`, `GET /api/analytics/events`, `GET /api/analytics/snapshot`
+- `WS /ws/analytics`, `WS /ws/analytics/overlays`, `WS /ws/metrics`
 
 Runner HTTP:
 

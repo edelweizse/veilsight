@@ -12,12 +12,15 @@ from .settings import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    analytics = RunnerClientRegistry.analytics(settings)
+    await analytics.start()
     client = RunnerClientRegistry.instance(settings)
     await client.start()
     try:
         yield
     finally:
         await client.close()
+        await analytics.close()
 
 
 app = FastAPI(title="Veilsight Controller", lifespan=lifespan)
