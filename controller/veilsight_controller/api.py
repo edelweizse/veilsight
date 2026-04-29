@@ -7,6 +7,15 @@ import grpc
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from .analytics_models import (
+    AnalyticsEvent,
+    AnalyticsRule,
+    AnalyticsRuleCreate,
+    AnalyticsRuleUpdate,
+    AnalyticsSnapshot,
+    AnalyticsSummary,
+)
+from .analytics_service import AnalyticsService
 from .models import ConfigPayload, ConfigResponse, ControllerHealth, SaveConfigResponse, StreamsResponse
 from .runner_client import RunnerClient, read_text, write_text
 from .settings import ControllerSettings, settings
@@ -28,21 +37,40 @@ def get_cache() -> TelemetryCache:
     return RunnerClientRegistry.cache
 
 
+def get_analytics_service() -> AnalyticsService:
+    return RunnerClientRegistry.analytics(settings)
+
+
 SettingsDep = Annotated[ControllerSettings, Depends(get_settings)]
 RunnerDep = Annotated[RunnerClient, Depends(get_runner)]
 CacheDep = Annotated[TelemetryCache, Depends(get_cache)]
+AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 
 
 class RunnerClientRegistry:
     client: RunnerClient | None = None
     cache = TelemetryCache()
+    analytics_service: AnalyticsService | None = None
+    _analytics_callback_registered = False
 
     @classmethod
     def instance(cls, request_settings: ControllerSettings) -> RunnerClient:
         if cls.client is None:
             cls.client = RunnerClient(request_settings.runner_grpc)
             cls.client.add_telemetry_callback(cls.cache.handle_event)
+        if cls.analytics_service is not None and not cls._analytics_callback_registered:
+            cls.client.add_telemetry_callback(cls.analytics_service.handle_event)
+            cls._analytics_callback_registered = True
         return cls.client
+
+    @classmethod
+    def analytics(cls, request_settings: ControllerSettings) -> AnalyticsService:
+        if cls.analytics_service is None:
+            cls.analytics_service = AnalyticsService(request_settings.analytics)
+        if cls.client is not None and not cls._analytics_callback_registered:
+            cls.client.add_telemetry_callback(cls.analytics_service.handle_event)
+            cls._analytics_callback_registered = True
+        return cls.analytics_service
 
 
 def payload_to_yaml(payload: ConfigPayload) -> str:
@@ -195,6 +223,70 @@ async def analytics_latest(cache: CacheDep) -> dict[str, Any]:
     return {"analytics": cache.latest_analytics, "last_receive_timestamp_ms": cache.last_receive_timestamp_ms}
 
 
+@router.get("/api/analytics/rules", response_model=list[AnalyticsRule])
+async def analytics_rules(
+    analytics: AnalyticsDep,
+    stream_id: Annotated[str | None, Query()] = None,
+    profile: Annotated[str | None, Query()] = "ui",
+) -> list[AnalyticsRule]:
+    return await analytics.list_rules(stream_id, profile)
+
+
+@router.post("/api/analytics/rules", response_model=AnalyticsRule)
+async def create_analytics_rule(payload: AnalyticsRuleCreate, analytics: AnalyticsDep) -> AnalyticsRule:
+    return await analytics.create_rule(payload)
+
+
+@router.put("/api/analytics/rules/{rule_id}", response_model=AnalyticsRule)
+async def update_analytics_rule(
+    rule_id: str,
+    payload: AnalyticsRuleUpdate,
+    analytics: AnalyticsDep,
+) -> AnalyticsRule:
+    rule = await analytics.update_rule(rule_id, payload)
+    if rule is None:
+        raise HTTPException(status_code=404, detail={"error": "analytics_rule_not_found"})
+    return rule
+
+
+@router.delete("/api/analytics/rules/{rule_id}")
+async def delete_analytics_rule(rule_id: str, analytics: AnalyticsDep) -> dict[str, bool]:
+    deleted = await analytics.delete_rule(rule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail={"error": "analytics_rule_not_found"})
+    return {"deleted": True}
+
+
+@router.get("/api/analytics/summary", response_model=AnalyticsSummary)
+async def analytics_summary(
+    analytics: AnalyticsDep,
+    stream_id: Annotated[str | None, Query()] = None,
+    profile: Annotated[str | None, Query()] = "ui",
+    window_s: Annotated[int, Query(ge=1, le=86400)] = 300,
+) -> AnalyticsSummary:
+    return await analytics.summary(stream_id, profile, window_s)
+
+
+@router.get("/api/analytics/events", response_model=list[AnalyticsEvent])
+async def analytics_events(
+    analytics: AnalyticsDep,
+    stream_id: Annotated[str | None, Query()] = None,
+    profile: Annotated[str | None, Query()] = "ui",
+    rule_id: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+) -> list[AnalyticsEvent]:
+    return await analytics.list_events(stream_id=stream_id, profile=profile, rule_id=rule_id, limit=limit)
+
+
+@router.get("/api/analytics/snapshot", response_model=AnalyticsSnapshot)
+async def analytics_snapshot(
+    analytics: AnalyticsDep,
+    stream_id: Annotated[str, Query()],
+    profile: Annotated[str, Query()] = "ui",
+) -> AnalyticsSnapshot:
+    return await analytics.latest_snapshot(stream_id, profile)
+
+
 async def websocket_loop(websocket: WebSocket, channel: str, cache: TelemetryCache) -> None:
     await cache.connect(websocket, channel)
     try:
@@ -207,6 +299,16 @@ async def websocket_loop(websocket: WebSocket, channel: str, cache: TelemetryCac
 @router.websocket("/ws/analytics")
 async def analytics_ws(websocket: WebSocket, cache: CacheDep) -> None:
     await websocket_loop(websocket, "analytics", cache)
+
+
+@router.websocket("/ws/analytics/overlays")
+async def analytics_overlays_ws(websocket: WebSocket, analytics: AnalyticsDep) -> None:
+    await analytics.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await analytics.disconnect(websocket)
 
 
 @router.websocket("/ws/metrics")

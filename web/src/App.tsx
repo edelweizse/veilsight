@@ -1,14 +1,159 @@
-import { Activity, FileCheck, Play, RefreshCw, Square } from "lucide-react";
+import {
+  Activity,
+  AreaChart,
+  FileCheck,
+  GitCommitHorizontal,
+  Layers,
+  MousePointer2,
+  Play,
+  RefreshCw,
+  Route,
+  Square,
+  TrendingUp
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { AnalyticsSnapshot, DrawMode, OverlayLayers, Point } from "./analytics/types";
 import { api, type PipelineStatus, type StreamInfo } from "./api/client";
 import { connectJsonWebSocket } from "./api/ws";
-import { TrackOverlay } from "./components/TrackOverlay";
+import { AnalyticsOverlay } from "./components/AnalyticsOverlay";
 import { WebRTCPlayer } from "./components/WebRTCPlayer";
 
-type Analytics = { stream?: { stream_id?: string; profile?: string }; frame_id?: number; tracks?: unknown[]; width?: number; height?: number };
-
-function streamKey(stream: StreamInfo) {
+function streamKey(stream: Pick<StreamInfo, "stream_id" | "profile">) {
   return `${stream.stream_id}/${stream.profile}`;
+}
+
+const defaultLayers: OverlayLayers = {
+  tracks: true,
+  heatmap: false,
+  density: false,
+  directions: true,
+  routes: false,
+  rules: true,
+  events: true
+};
+
+function LayerToggles({ layers, onChange }: { layers: OverlayLayers; onChange: (layers: OverlayLayers) => void }) {
+  const items: Array<[keyof OverlayLayers, string]> = [
+    ["tracks", "Tracks"],
+    ["heatmap", "Heatmap"],
+    ["density", "Density"],
+    ["directions", "Directions"],
+    ["routes", "Routes"],
+    ["rules", "Rules"],
+    ["events", "Events"]
+  ];
+  return (
+    <div className="toggle-grid" aria-label="Overlay layers">
+      {items.map(([key, label]) => (
+        <label key={key}>
+          <input type="checkbox" checked={layers[key]} onChange={(event) => onChange({ ...layers, [key]: event.target.checked })} />
+          {label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function DrawTools({ mode, onChange }: { mode: DrawMode; onChange: (mode: DrawMode) => void }) {
+  return (
+    <div className="tool-row" aria-label="Rule drawing tools">
+      <button className={mode === "select" ? "active" : ""} onClick={() => onChange("select")} title="Select">
+        <MousePointer2 size={16} />Select
+      </button>
+      <button className={mode === "line" ? "active" : ""} onClick={() => onChange("line")} title="Line rule">
+        <GitCommitHorizontal size={16} />Line
+      </button>
+      <button className={mode === "area" ? "active" : ""} onClick={() => onChange("area")} title="Area rule">
+        <AreaChart size={16} />Area
+      </button>
+    </div>
+  );
+}
+
+function StreamVideo({
+  stream,
+  snapshot,
+  layers,
+  drawMode,
+  onCreateRule,
+  onUpdateRule
+}: {
+  stream: StreamInfo;
+  snapshot?: AnalyticsSnapshot;
+  layers: OverlayLayers;
+  drawMode: DrawMode;
+  onCreateRule: (kind: "line" | "area", points: Point[]) => Promise<void>;
+  onUpdateRule: (ruleId: string, points: Point[]) => Promise<void>;
+}) {
+  return (
+    <div className="video-wrap">
+      <WebRTCPlayer stream={stream} />
+      <AnalyticsOverlay
+        snapshot={snapshot}
+        layers={layers}
+        drawMode={drawMode}
+        onCreateRule={onCreateRule}
+        onUpdateRule={(rule, points) => onUpdateRule(rule.id, points)}
+      />
+    </div>
+  );
+}
+
+function StreamWorkspace({
+  streams,
+  selectedKey,
+  snapshots,
+  layers,
+  drawMode,
+  onSelect,
+  onCreateRule,
+  onUpdateRule
+}: {
+  streams: StreamInfo[];
+  selectedKey: string;
+  snapshots: Record<string, AnalyticsSnapshot>;
+  layers: OverlayLayers;
+  drawMode: DrawMode;
+  onSelect: (key: string) => void;
+  onCreateRule: (kind: "line" | "area", points: Point[]) => Promise<void>;
+  onUpdateRule: (ruleId: string, points: Point[]) => Promise<void>;
+}) {
+  const selectedStream = streams.find((stream) => streamKey(stream) === selectedKey) ?? streams[0];
+  if (!selectedStream) return <div className="empty">No streams reported by runner</div>;
+  const selected = streamKey(selectedStream);
+  const otherStreams = streams.filter((stream) => streamKey(stream) !== selected);
+
+  return (
+    <section className="focus-workspace">
+      <article className="focused-stream">
+        <header>
+          <strong>{selected}</strong>
+          <span>{selectedStream.webrtc_available ? "WebRTC" : "MJPEG fallback"}</span>
+        </header>
+        <StreamVideo
+          stream={selectedStream}
+          snapshot={snapshots[selected]}
+          layers={layers}
+          drawMode={drawMode}
+          onCreateRule={onCreateRule}
+          onUpdateRule={onUpdateRule}
+        />
+      </article>
+      <div className="stream-strip">
+        {otherStreams.map((stream) => {
+          const key = streamKey(stream);
+          return (
+            <button className="stream-thumb" key={key} onClick={() => onSelect(key)}>
+              <div className="thumb-media">
+                <WebRTCPlayer stream={stream} />
+              </div>
+              <span>{key}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 export function App() {
@@ -16,8 +161,10 @@ export function App() {
   const [status, setStatus] = useState<PipelineStatus>({});
   const [streams, setStreams] = useState<StreamInfo[]>([]);
   const [metrics, setMetrics] = useState<Record<string, any>>({});
-  const [analytics, setAnalytics] = useState<Record<string, Analytics>>({});
+  const [snapshots, setSnapshots] = useState<Record<string, AnalyticsSnapshot>>({});
   const [selectedKey, setSelectedKey] = useState<string>("");
+  const [layers, setLayers] = useState<OverlayLayers>(defaultLayers);
+  const [drawMode, setDrawMode] = useState<DrawMode>("select");
   const [configPath, setConfigPath] = useState("");
   const [yamlText, setYamlText] = useState("");
   const [configMessage, setConfigMessage] = useState("");
@@ -45,13 +192,15 @@ export function App() {
       if (value.metrics) setMetrics(value.metrics);
       if (value.status) setStatus(value.status);
     });
-    const analyticsSocket = connectJsonWebSocket("/ws/analytics", (value: any) => {
+    const overlaySocket = connectJsonWebSocket("/ws/analytics/overlays", (value: any) => {
       const stream = value.stream ?? {};
-      setAnalytics((prev) => ({ ...prev, [`${stream.stream_id}/${stream.profile}`]: value }));
+      if (stream.stream_id) {
+        setSnapshots((prev) => ({ ...prev, [`${stream.stream_id}/${stream.profile ?? "ui"}`]: value as AnalyticsSnapshot }));
+      }
     });
     return () => {
       metricsSocket.close();
-      analyticsSocket.close();
+      overlaySocket.close();
     };
   }, []);
 
@@ -59,6 +208,7 @@ export function App() {
     () => streams.find((stream) => streamKey(stream) === selectedKey) ?? streams[0],
     [streams, selectedKey]
   );
+  const selectedSnapshot = selectedStream ? snapshots[streamKey(selectedStream)] : undefined;
 
   async function runCommand(command: () => Promise<Record<string, unknown>>) {
     const result = await command();
@@ -74,6 +224,38 @@ export function App() {
   async function saveConfig() {
     const result = await api.saveConfig(yamlText);
     setConfigMessage(JSON.stringify(result, null, 2));
+  }
+
+  async function createRule(kind: "line" | "area", points: Point[]) {
+    if (!selectedStream) return;
+    const name = `${kind === "line" ? "Line" : "Area"} ${new Date().toLocaleTimeString()}`;
+    const rule = await api.createAnalyticsRule({
+      stream_id: selectedStream.stream_id,
+      profile: selectedStream.profile,
+      kind,
+      name,
+      enabled: true,
+      geometry: { points },
+      settings: kind === "line" ? { min_gap_ms: 1000 } : {}
+    });
+    setSnapshots((prev) => {
+      const key = streamKey(selectedStream);
+      const snapshot = prev[key];
+      if (!snapshot) return prev;
+      return { ...prev, [key]: { ...snapshot, rules: [...snapshot.rules.filter((item) => item.id !== (rule as any).id), rule as any] } };
+    });
+    setDrawMode("select");
+  }
+
+  async function updateRule(ruleId: string, points: Point[]) {
+    const rule = await api.updateAnalyticsRule(ruleId, { geometry: { points } });
+    if (!selectedStream) return;
+    setSnapshots((prev) => {
+      const key = streamKey(selectedStream);
+      const snapshot = prev[key];
+      if (!snapshot) return prev;
+      return { ...prev, [key]: { ...snapshot, rules: snapshot.rules.map((item) => (item.id === ruleId ? (rule as any) : item)) } };
+    });
   }
 
   const globalStages = Array.isArray(metrics.global) ? metrics.global : [];
@@ -96,24 +278,16 @@ export function App() {
       </header>
 
       <section className="workspace">
-        <div className="streams-grid">
-          {streams.map((stream) => {
-            const key = streamKey(stream);
-            return (
-              <article className={`stream-tile ${key === selectedKey ? "selected" : ""}`} key={key} onClick={() => setSelectedKey(key)}>
-                <div className="video-wrap">
-                  <WebRTCPlayer stream={stream} />
-                  <TrackOverlay analytics={analytics[key] as any} />
-                </div>
-                <footer>
-                  <strong>{key}</strong>
-                  <span>{stream.webrtc_available ? "WebRTC" : "MJPEG fallback"}</span>
-                </footer>
-              </article>
-            );
-          })}
-          {streams.length === 0 && <div className="empty">No streams reported by runner</div>}
-        </div>
+        <StreamWorkspace
+          streams={streams}
+          selectedKey={selectedKey}
+          snapshots={snapshots}
+          layers={layers}
+          drawMode={drawMode}
+          onSelect={setSelectedKey}
+          onCreateRule={createRule}
+          onUpdateRule={updateRule}
+        />
 
         <aside className="side-panel">
           <section>
@@ -131,9 +305,26 @@ export function App() {
           </section>
 
           <section>
-            <h2>Analytics</h2>
-            <p>Frame {selectedStream ? analytics[streamKey(selectedStream)]?.frame_id ?? 0 : 0}</p>
-            <p>Tracks {selectedStream ? analytics[streamKey(selectedStream)]?.tracks?.length ?? 0 : 0}</p>
+            <h2><Layers size={16} />Layers</h2>
+            <LayerToggles layers={layers} onChange={setLayers} />
+            <DrawTools mode={drawMode} onChange={setDrawMode} />
+          </section>
+
+          <section>
+            <h2><TrendingUp size={16} />Analytics</h2>
+            <div className="stat-row"><span>Frame</span><strong>{selectedSnapshot?.frame_id ?? 0}</strong></div>
+            <div className="stat-row"><span>Active</span><strong>{selectedSnapshot?.counts.active_tracks ?? 0}</strong></div>
+            <div className="stat-row"><span>Unique</span><strong>{selectedSnapshot?.counts.unique_tracks ?? 0}</strong></div>
+            <div className="stat-row"><span>Rules</span><strong>{selectedSnapshot?.rules.length ?? 0}</strong></div>
+            <div className="event-list">
+              {(selectedSnapshot?.recent_events ?? []).slice(0, 6).map((event) => (
+                <div key={`${event.id ?? event.ts_ms}-${event.kind}-${event.track_id}`}>
+                  <span>{event.kind}</span>
+                  <small>track {event.track_id ?? "-"}</small>
+                </div>
+              ))}
+            </div>
+            <div className="routes-note"><Route size={14} />{selectedSnapshot?.routes.length ?? 0} learned routes</div>
           </section>
         </aside>
       </section>
