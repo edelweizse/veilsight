@@ -151,15 +151,51 @@ namespace veilsight {
         YoloXModuleConfig cfg;
         if (!n) return cfg;
 
+        cfg.variant = get_str(n, "variant", cfg.variant);
+        if (cfg.variant == "nano") {
+            cfg.model_path = "models/detector/bytetrack_nano";
+            cfg.param_path = "models/detector/bytetrack_nano.ncnn.param";
+            cfg.bin_path = "models/detector/bytetrack_nano.ncnn.bin";
+        } else if (cfg.variant == "tiny") {
+            cfg.model_path = "models/detector/bytetrack_tiny";
+            cfg.param_path = "models/detector/bytetrack_tiny.ncnn.param";
+            cfg.bin_path = "models/detector/bytetrack_tiny.ncnn.bin";
+        }
         cfg.model_path = get_str(n, "model_path", cfg.model_path);
+        cfg.param_path = get_str(n, "param_path", cfg.param_path);
+        cfg.bin_path = get_str(n, "bin_path", cfg.bin_path);
+        if (n["model_path"] && !n["param_path"] && !n["bin_path"]) {
+            const std::string prefix = cfg.model_path;
+            cfg.param_path = prefix.ends_with(".ncnn.param") ? prefix : prefix + ".ncnn.param";
+            cfg.bin_path = prefix.ends_with(".ncnn.bin") ? prefix : prefix + ".ncnn.bin";
+        }
         cfg.input_w = get_int(n, "input_w", cfg.input_w);
         cfg.input_h = get_int(n, "input_h", cfg.input_h);
         cfg.score_threshold = get_float(n, "score_threshold", cfg.score_threshold);
         cfg.nms_threshold = get_float(n, "nms_threshold", cfg.nms_threshold);
         cfg.top_k = get_int(n, "top_k", cfg.top_k);
-        cfg.person_class_id = get_int(n, "person_class_id", cfg.person_class_id);
+        cfg.class_id = get_int(n, "class_id", get_int(n, "person_class_id", cfg.class_id));
+        cfg.ncnn_threads = get_int(n, "ncnn_threads", cfg.ncnn_threads);
         cfg.letterbox = get_bool(n, "letterbox", cfg.letterbox);
         cfg.decoded_output = get_bool(n, "decoded_output", cfg.decoded_output);
+        return cfg;
+    }
+
+    static SceneGridConfig parse_scene_grid_config(const YAML::Node& n, const SceneGridConfig& def = {}) {
+        SceneGridConfig cfg = def;
+        if (!n) return cfg;
+
+        cfg.enabled = get_bool(n, "enabled", cfg.enabled);
+        cfg.rows = get_int(n, "rows", cfg.rows);
+        cfg.cols = get_int(n, "cols", cfg.cols);
+        cfg.association_weight = get_float(n, "association_weight", cfg.association_weight);
+        cfg.cell_distance_weight = get_float(n, "cell_distance_weight", cfg.cell_distance_weight);
+        cfg.occupancy_weight = get_float(n, "occupancy_weight", cfg.occupancy_weight);
+        cfg.transition_weight = get_float(n, "transition_weight", cfg.transition_weight);
+        cfg.max_extra_cost = get_float(n, "max_extra_cost", cfg.max_extra_cost);
+        cfg.occupancy_decay = get_float(n, "occupancy_decay", cfg.occupancy_decay);
+        cfg.transition_decay = get_float(n, "transition_decay", cfg.transition_decay);
+        cfg.warmup_frames = get_int(n, "warmup_frames", cfg.warmup_frames);
         return cfg;
     }
 
@@ -204,6 +240,7 @@ namespace veilsight {
             cfg.bytetrack.track_buffer = get_int(bytetrack, "track_buffer", cfg.bytetrack.track_buffer);
             cfg.bytetrack.min_box_area = get_float(bytetrack, "min_box_area", cfg.bytetrack.min_box_area);
             cfg.bytetrack.fuse_score = get_bool(bytetrack, "fuse_score", cfg.bytetrack.fuse_score);
+            cfg.bytetrack.scene_grid = parse_scene_grid_config(bytetrack["scene_grid"], cfg.bytetrack.scene_grid);
         }
 
         const YAML::Node ocsort = n["ocsort"];

@@ -94,6 +94,9 @@ message Track {
   float h = 5;
   float score = 6;
   bool occluded = 7;
+  string identity_key = 8;
+  float identity_confidence = 9;
+  string privacy_action = 10;
 }
 
 message FrameAnalytics {

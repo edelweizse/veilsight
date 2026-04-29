@@ -119,6 +119,9 @@ namespace veilsight {
             t->set_h(box.h);
             t->set_score(box.score);
             t->set_occluded(box.occluded);
+            t->set_identity_key(box.identity_key);
+            t->set_identity_confidence(box.identity_confidence);
+            t->set_privacy_action(box.privacy_action);
         }
         publish_(std::move(event), false);
     }

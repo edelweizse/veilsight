@@ -61,6 +61,47 @@ In production, build the React app and run the Controller; FastAPI serves `web/d
 
 ## Configuration
 
+Person tracking uses a configurable person detector followed by ByteTrack. Detector boxes are expected in inference-frame coordinates, and anonymization remains fail-closed for all emitted person tracks:
+
+```yaml
+modules:
+  detector:
+    type: "yolox" # yolox | future_person_backend
+    workers: 2
+    yolox:
+      variant: "nano"
+      param_path: "models/detector/bytetrack_nano.ncnn.param"
+      bin_path: "models/detector/bytetrack_nano.ncnn.bin"
+      input_w: 1088
+      input_h: 608
+      score_threshold: 0.35
+      nms_threshold: 0.45
+      top_k: 300
+      class_id: 0
+      ncnn_threads: 1
+      letterbox: true
+      decoded_output: false
+  tracker:
+    type: "bytetrack"
+    bytetrack:
+      high_thresh: 0.45
+      low_thresh: 0.2
+      new_track_thresh: 0.45
+      match_iou_thresh: 0.35
+      low_match_iou_thresh: 0.25
+      unconfirmed_match_iou_thresh: 0.35
+      duplicate_iou_thresh: 0.85
+      track_buffer: 100
+      min_box_area: 0.0
+      fuse_score: true
+      scene_grid:
+        enabled: true
+        rows: 6
+        cols: 8
+        association_weight: 0.15
+        max_extra_cost: 0.30
+```
+
 Default same-device gRPC transport:
 
 ```yaml
@@ -85,7 +126,9 @@ streaming:
     stun_servers: []
     cors_allowed_origins:
       - "http://localhost:8000"
+      - "http://127.0.0.1:8000"
       - "http://localhost:5173"
+      - "http://127.0.0.1:5173"
 ```
 
 Reload is whole-pipeline: the Runner validates first, stops the old pipeline, starts the new one, and attempts rollback to the previous config if the new start fails.

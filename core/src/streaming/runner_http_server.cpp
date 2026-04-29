@@ -102,6 +102,8 @@ namespace veilsight {
         res.set_header("Access-Control-Allow-Origin", cors_origin_(request_origin));
         res.set_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
         res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Expose-Headers", "Location");
+        res.set_header("Vary", "Origin");
     }
 
     bool RunnerHTTPServer::start() {

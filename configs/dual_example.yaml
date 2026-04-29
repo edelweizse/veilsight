@@ -23,35 +23,27 @@ streaming:
 
 modules:
   detector:
-    # "yunet" | "scrfd"
-    type: "yunet"
-    workers: 3
+    # "yolox" | future_person_backend
+    type: "yolox"
+    workers: 4
 
-    yunet:
-      param_path: "models/detector/yunet/face_detection_yunet_2023mar.ncnn.param"
-      bin_path: "models/detector/yunet/face_detection_yunet_2023mar.ncnn.bin"
-      input_w: 640
-      input_h: 640
+    yolox:
+      variant: "nano"
+      param_path: "models/detector/bytetrack_nano.ncnn.param"
+      bin_path: "models/detector/bytetrack_nano.ncnn.bin"
+      input_w: 1088
+      input_h: 608
       score_threshold: 0.35
-      nms_threshold: 0.3
-      top_k: 750
+      nms_threshold: 0.45
+      top_k: 300
+      class_id: 0
       ncnn_threads: 1
-
-    scrfd:
-      # 25g | 500m | 25g_landmarks | 500m_landmarks | 10g
-      variant: "25g"
-      param_path: "models/detector/scrfd_10g/scrfd_25g_opt.ncnn.param"
-      bin_path: "models/detector/scrfd_10g/scrfd_25g_opt.ncnn.bin"
-      input_w: 640
-      input_h: 640
-      score_threshold: 0.35
-      nms_threshold: 0.3
-      top_k: 750
-      ncnn_threads: 1
+      letterbox: true
+      decoded_output: false
 
   tracker:
     # "demo" | "bytetrack"
-    type: "demo"
+    type: "bytetrack"
     demo:
       high_thresh: 0.6
       low_thresh: 0.2
@@ -70,6 +62,18 @@ modules:
       track_buffer: 100
       min_box_area: 0
       fuse_score: true
+      scene_grid:
+        enabled: true
+        rows: 6
+        cols: 8
+        association_weight: 0.15
+        cell_distance_weight: 0.65
+        occupancy_weight: 0.15
+        transition_weight: 0.20
+        max_extra_cost: 0.30
+        occupancy_decay: 0.92
+        transition_decay: 0.98
+        warmup_frames: 5
 
   recognizer:
     type: "none"
@@ -142,11 +146,11 @@ streams:
       fps: 5
 
     outputs:
-      fps: 10
+      fps: 5
       profiles:
         inference:
-          width: 640
-          height: 640
+          width: 1088
+          height: 608
           format: "BGR"
         ui:
           width: 1280

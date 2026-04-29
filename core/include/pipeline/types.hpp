@@ -15,6 +15,9 @@ namespace veilsight {
         int id = -1;
         float score = 0.0f;
         bool occluded = false;
+        std::string identity_key = "";
+        float identity_confidence = 0.0f;
+        std::string privacy_action = "anonymize";
     };
 
     struct FrameCtx {

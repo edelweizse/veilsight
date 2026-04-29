@@ -185,6 +185,26 @@ namespace {
         check(cfg.streaming.webrtc.stun_servers.size() == 1, "STUN servers should parse");
     }
 
+    void test_streaming_webrtc_default_cors_allows_vite_loopback() {
+        const std::string yaml = base_streaming_yaml(
+            "  primary: \"webrtc\"\n"
+            "  fallback: \"mjpeg\"\n"
+            "  codec: \"h264\"\n"
+            "  encoder: \"auto\"\n"
+            "  bitrate_kbps: 2500\n"
+            "  keyframe_interval_frames: 30\n");
+
+        const std::string path = write_yaml_file("veilsight_streaming_cors_defaults", yaml);
+        const auto cfg = veilsight::load_config_yaml(path);
+        std::filesystem::remove(path);
+
+        const auto& origins = cfg.streaming.webrtc.cors_allowed_origins;
+        check(std::find(origins.begin(), origins.end(), "http://localhost:5173") != origins.end(),
+              "default CORS origins should allow localhost Vite dev server");
+        check(std::find(origins.begin(), origins.end(), "http://127.0.0.1:5173") != origins.end(),
+              "default CORS origins should allow 127.0.0.1 Vite dev server");
+    }
+
     void test_streaming_validation_rejects_invalid_values() {
         check(load_throws(base_streaming_yaml("  bitrate_kbps: 0\n")),
               "streaming.bitrate_kbps must reject non-positive values");
@@ -219,6 +239,95 @@ namespace {
         check(!selected.available && selected.error.find("missingenc") != std::string::npos,
               "missing exact encoder should return a clear error");
     }
+
+    void test_person_detector_and_scene_grid_config() {
+        const std::string yaml =
+            "server:\n"
+            "  host: \"0.0.0.0\"\n"
+            "  port: 8080\n"
+            "modules:\n"
+            "  detector:\n"
+            "    type: \"yolox\"\n"
+            "    workers: 2\n"
+            "    yolox:\n"
+            "      variant: \"tiny\"\n"
+            "      param_path: \"models/detector/bytetrack_tiny.ncnn.param\"\n"
+            "      bin_path: \"models/detector/bytetrack_tiny.ncnn.bin\"\n"
+            "      class_id: 3\n"
+            "      ncnn_threads: 4\n"
+            "  tracker:\n"
+            "    type: \"bytetrack\"\n"
+            "    bytetrack:\n"
+            "      min_box_area: 144\n"
+            "      scene_grid:\n"
+            "        enabled: true\n"
+            "        rows: 5\n"
+            "        cols: 7\n"
+            "        association_weight: 0.2\n"
+            "streams:\n"
+            "  - id: \"file0\"\n"
+            "    type: \"file\"\n"
+            "    file:\n"
+            "      path: \"/tmp/test.mp4\"\n"
+            "    outputs:\n"
+            "      fps: 12\n"
+            "      profiles:\n"
+            "        inference:\n"
+            "          width: 640\n"
+            "          height: 640\n"
+            "        ui:\n"
+            "          width: 1280\n"
+            "          height: 720\n";
+
+        const std::string path = write_yaml_file("veilsight_person_cfg_ok", yaml);
+        const auto cfg = veilsight::load_config_yaml(path);
+        std::filesystem::remove(path);
+
+        check(cfg.modules.detector.type == "yolox", "detector.type should parse yolox");
+        check(cfg.modules.detector.yolox.variant == "tiny", "yolox.variant should parse");
+        check(cfg.modules.detector.yolox.param_path == "models/detector/bytetrack_tiny.ncnn.param",
+              "yolox.param_path should parse");
+        check(cfg.modules.detector.yolox.bin_path == "models/detector/bytetrack_tiny.ncnn.bin",
+              "yolox.bin_path should parse");
+        check(cfg.modules.detector.yolox.class_id == 3, "yolox.class_id should parse");
+        check(cfg.modules.detector.yolox.ncnn_threads == 4, "yolox.ncnn_threads should parse");
+        check(cfg.modules.tracker.bytetrack.min_box_area == 144.0f, "bytetrack min_box_area should parse");
+        check(cfg.modules.tracker.bytetrack.scene_grid.rows == 5, "scene_grid rows should parse");
+        check(cfg.modules.tracker.bytetrack.scene_grid.cols == 7, "scene_grid cols should parse");
+        check(cfg.modules.tracker.bytetrack.scene_grid.association_weight == 0.2f,
+              "scene_grid association_weight should parse");
+    }
+
+    void test_legacy_person_class_id_alias() {
+        const std::string yaml =
+            "server:\n"
+            "  host: \"0.0.0.0\"\n"
+            "  port: 8080\n"
+            "modules:\n"
+            "  detector:\n"
+            "    yolox:\n"
+            "      person_class_id: 2\n"
+            "streams:\n"
+            "  - id: \"file0\"\n"
+            "    type: \"file\"\n"
+            "    file:\n"
+            "      path: \"/tmp/test.mp4\"\n"
+            "    outputs:\n"
+            "      fps: 12\n"
+            "      profiles:\n"
+            "        inference:\n"
+            "          width: 640\n"
+            "          height: 640\n"
+            "        ui:\n"
+            "          width: 1280\n"
+            "          height: 720\n";
+
+        const std::string path = write_yaml_file("veilsight_person_alias_cfg_ok", yaml);
+        const auto cfg = veilsight::load_config_yaml(path);
+        std::filesystem::remove(path);
+
+        check(cfg.modules.detector.yolox.class_id == 2, "person_class_id should remain an alias for class_id");
+    }
 }
 
 int main() {
@@ -227,8 +336,11 @@ int main() {
     test_config_requires_global_outputs_fps();
     test_global_outputs_fps_overrides_profile_fps();
     test_streaming_webrtc_defaults_and_parsing();
+    test_streaming_webrtc_default_cors_allows_vite_loopback();
     test_streaming_validation_rejects_invalid_values();
     test_h264_encoder_selector();
+    test_person_detector_and_scene_grid_config();
+    test_legacy_person_class_id_alias();
 
     if (g_failures != 0) {
         std::cerr << "[FAIL] total failures: " << g_failures << "\n";

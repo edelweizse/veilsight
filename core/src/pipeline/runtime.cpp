@@ -19,6 +19,15 @@ namespace veilsight {
                     std::chrono::steady_clock::now().time_since_epoch())
                     .count());
         }
+
+        Box map_box_to_ui(const Box& box, const FrameCtx& frame) {
+            Box out = box;
+            out.x = box.x * frame.scale_x + frame.offset_x;
+            out.y = box.y * frame.scale_y + frame.offset_y;
+            out.w = box.w * frame.scale_x;
+            out.h = box.h * frame.scale_y;
+            return out;
+        }
     }
 
     struct PipelineRuntime::DetectorStage {
@@ -442,12 +451,6 @@ namespace veilsight {
                        ctx->scale_y,
                        ctx->offset_x,
                        ctx->offset_y);
-            draw_tracks_(ctx->ui,
-                         ctx->tracked_boxes,
-                         ctx->scale_x,
-                         ctx->scale_y,
-                         ctx->offset_x,
-                         ctx->offset_y);
 
             if (metrics_) {
                 const uint64_t dt_ns = steady_now_ns() - anonymizer_t0_ns;
@@ -577,15 +580,21 @@ namespace veilsight {
     }
 
     void PipelineRuntime::publish_tracker_output_(const FrameCtx& ctx, const std::vector<Box>& tracks) {
+        std::vector<Box> ui_tracks;
+        ui_tracks.reserve(tracks.size());
+        for (const auto& track : tracks) {
+            ui_tracks.push_back(map_box_to_ui(track, ctx));
+        }
+
         TrackerFrameOutput out;
         out.stream_id = ctx.stream_id;
         out.frame_id = ctx.frame_id;
         out.pts_ns = ctx.pts_ns;
-        out.tracks = tracks;
+        out.tracks = ui_tracks;
         out.width = ctx.ui_w;
         out.height = ctx.ui_h;
         analytics_out_.push_drop_oldest(std::move(out));
-        telemetry_publisher_.publish_frame_analytics(ctx, tracks);
+        telemetry_publisher_.publish_frame_analytics(ctx, ui_tracks);
     }
 
     std::map<std::string, QueueSnapshot> PipelineRuntime::snapshot_queues_() const {
