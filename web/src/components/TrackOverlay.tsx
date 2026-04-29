@@ -30,7 +30,7 @@ export function TrackOverlay({ analytics }: { analytics?: Analytics }) {
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, w, h);
       ctx.fillStyle = ctx.strokeStyle;
-      ctx.fillText(`id:${track.id} score:${track.score.toFixed(2)}`, x + 4, Math.max(14, y - 4));
+      ctx.fillText(`id:${track.id}`, x + 4, Math.max(14, y - 4));
     }
   }, [analytics]);
 

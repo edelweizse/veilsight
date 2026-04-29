@@ -19,6 +19,7 @@ target_include_directories(veilsight_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc
 
 # Compile Options
 target_compile_features(veilsight_core PUBLIC cxx_std_20)
+target_compile_definitions(veilsight_core PRIVATE GST_USE_UNSTABLE_API)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(veilsight_core PRIVATE -Wall -Wextra -Wpedantic)
@@ -36,6 +37,8 @@ pkg_check_modules(GST REQUIRED IMPORTED_TARGET gstreamer-1.0)
 pkg_check_modules(GST_APP REQUIRED IMPORTED_TARGET gstreamer-app-1.0)
 pkg_check_modules(GST_VIDEO REQUIRED IMPORTED_TARGET gstreamer-video-1.0)
 pkg_check_modules(GST_ALLOCATORS REQUIRED IMPORTED_TARGET gstreamer-allocators-1.0)
+pkg_check_modules(GST_WEBRTC REQUIRED IMPORTED_TARGET gstreamer-webrtc-1.0)
+pkg_check_modules(GST_SDP REQUIRED IMPORTED_TARGET gstreamer-sdp-1.0)
 pkg_check_modules(PCRE2 REQUIRED IMPORTED_TARGET libpcre2-8)
 
 target_link_libraries(veilsight_core PRIVATE
@@ -43,6 +46,8 @@ target_link_libraries(veilsight_core PRIVATE
         PkgConfig::GST_APP
         PkgConfig::GST_VIDEO
         PkgConfig::GST_ALLOCATORS
+        PkgConfig::GST_WEBRTC
+        PkgConfig::GST_SDP
         PkgConfig::PCRE2
 )
 

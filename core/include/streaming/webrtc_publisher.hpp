@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -53,20 +54,16 @@ namespace veilsight {
         size_t active_sessions(const std::string& stream_key) const;
 
     private:
-        struct Session {
-            std::string id;
-            std::string stream_key;
-            std::chrono::steady_clock::time_point last_seen;
-        };
+        struct Session;
 
         static std::string make_session_id_();
-        static std::string minimal_sdp_answer_();
 
         StreamingConfig config_;
         H264EncoderSelection encoder_;
 
         mutable std::mutex mutex_;
-        std::map<std::string, Session> sessions_;
+        std::map<std::string, std::shared_ptr<Session>> sessions_;
+        std::map<std::string, std::pair<int, int>> latest_dimensions_;
         std::vector<std::string> streams_;
     };
 }
