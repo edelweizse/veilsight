@@ -62,7 +62,8 @@ namespace veilsight {
             explicit DemoTracker(TrackerConfig cfg)
                 : cfg_(std::move(cfg)) {}
 
-            std::vector<Box> update(const std::vector<Box>& detections) override {
+            std::vector<Box> update(const TrackerFrameInfo&,
+                                    const std::vector<Box>& detections) override {
                 for (auto& t : tracks_) {
                     t.age += 1;
                     t.missed += 1;
@@ -146,41 +147,18 @@ namespace veilsight {
 
         private:
             void apply_match_(TrackState& track, const Box& det) {
-                Box adjusted = det;
-
-                // Partial-face detections can jump to one side; clamp per-frame movement/size shift.
-                const float prev_cx = track.box.x + track.box.w * 0.5f;
-                const float prev_cy = track.box.y + track.box.h * 0.5f;
-                const float det_cx = det.x + det.w * 0.5f;
-                const float det_cy = det.y + det.h * 0.5f;
-                const float max_shift = 0.35f * std::max(track.box.w, track.box.h) + 4.0f;
-
-                const float clamped_dx = std::clamp(det_cx - prev_cx, -max_shift, max_shift);
-                const float clamped_dy = std::clamp(det_cy - prev_cy, -max_shift, max_shift);
-                const float new_cx = prev_cx + clamped_dx;
-                const float new_cy = prev_cy + clamped_dy;
-
-                const float min_w = std::max(1.0f, track.box.w * 0.7f);
-                const float max_w = std::max(min_w, track.box.w * 1.45f);
-                const float min_h = std::max(1.0f, track.box.h * 0.7f);
-                const float max_h = std::max(min_h, track.box.h * 1.45f);
-                adjusted.w = std::clamp(det.w, min_w, max_w);
-                adjusted.h = std::clamp(det.h, min_h, max_h);
-                adjusted.x = new_cx - adjusted.w * 0.5f;
-                adjusted.y = new_cy - adjusted.h * 0.5f;
-
                 const float alpha = 0.35f;
-                const float new_vx = adjusted.x - track.box.x;
-                const float new_vy = adjusted.y - track.box.y;
-                const float new_vw = adjusted.w - track.box.w;
-                const float new_vh = adjusted.h - track.box.h;
+                const float new_vx = det.x - track.box.x;
+                const float new_vy = det.y - track.box.y;
+                const float new_vw = det.w - track.box.w;
+                const float new_vh = det.h - track.box.h;
 
                 track.vx = alpha * new_vx + (1.0f - alpha) * track.vx;
                 track.vy = alpha * new_vy + (1.0f - alpha) * track.vy;
                 track.vw = alpha * new_vw + (1.0f - alpha) * track.vw;
                 track.vh = alpha * new_vh + (1.0f - alpha) * track.vh;
 
-                track.box = adjusted;
+                track.box = det;
                 track.hits += 1;
                 track.missed = 0;
             }

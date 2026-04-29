@@ -72,7 +72,14 @@ namespace veilsight {
         if (!frame || !tracker_) return;
 
         const auto tracker_t0 = std::chrono::steady_clock::now();
-        frame->tracked_boxes = tracker_->update(detections);
+        frame->tracked_boxes = tracker_->update(
+            TrackerFrameInfo{
+                frame->stream_id,
+                frame->frame_id,
+                frame->inf_w,
+                frame->inf_h,
+            },
+            detections);
         const auto tracker_t1 = std::chrono::steady_clock::now();
 
         if (callbacks.on_tracker_timing) {

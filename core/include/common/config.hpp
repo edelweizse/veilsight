@@ -8,8 +8,8 @@ namespace veilsight {
     struct YuNetModuleConfig {
         std::string param_path = "models/detector/yunet/face_detection_yunet_2023mar.ncnn.param";
         std::string bin_path = "models/detector/yunet/face_detection_yunet_2023mar.ncnn.bin";
-        int input_w = 640;
-        int input_h = 640;
+        int input_w = 1088;
+        int input_h = 608;
         float score_threshold = 0.6f;
         float nms_threshold = 0.3f;
         int top_k = 750;
@@ -29,19 +29,23 @@ namespace veilsight {
     };
 
     struct YoloXModuleConfig {
-        std::string model_path = "models/detector/yolox/yolox_s.onnx";
+        std::string variant = "nano";
+        std::string model_path = "models/detector/bytetrack_nano";
+        std::string param_path = "models/detector/bytetrack_nano.ncnn.param";
+        std::string bin_path = "models/detector/bytetrack_nano.ncnn.bin";
         int input_w = 640;
         int input_h = 640;
         float score_threshold = 0.35f;
         float nms_threshold = 0.45f;
         int top_k = 300;
-        int person_class_id = 0;
+        int class_id = 0;
+        int ncnn_threads = 1;
         bool letterbox = true;
-        bool decoded_output = true;
+        bool decoded_output = false;
     };
 
     struct DetectorModuleConfig {
-        std::string type = "yunet"; // yunet|scrfd|yolox
+        std::string type = "yolox"; // yolox|yunet|scrfd
         int workers = 1;
         YuNetModuleConfig yunet;
         SCRFDModuleConfig scrfd;
@@ -57,17 +61,32 @@ namespace veilsight {
         int max_missed = 20;
     };
 
+    struct SceneGridConfig {
+        bool enabled = true;
+        int rows = 6;
+        int cols = 8;
+        float association_weight = 0.15f;
+        float cell_distance_weight = 0.65f;
+        float occupancy_weight = 0.15f;
+        float transition_weight = 0.20f;
+        float max_extra_cost = 0.30f;
+        float occupancy_decay = 0.92f;
+        float transition_decay = 0.98f;
+        int warmup_frames = 5;
+    };
+
     struct ByteTrackModuleConfig {
-        float high_thresh = 0.6f;
-        float low_thresh = 0.1f;
-        float new_track_thresh = 0.7f;
-        float match_iou_thresh = 0.8f;
-        float low_match_iou_thresh = 0.5f;
-        float unconfirmed_match_iou_thresh = 0.7f;
+        float high_thresh = 0.45f;
+        float low_thresh = 0.2f;
+        float new_track_thresh = 0.45f;
+        float match_iou_thresh = 0.35f;
+        float low_match_iou_thresh = 0.25f;
+        float unconfirmed_match_iou_thresh = 0.35f;
         float duplicate_iou_thresh = 0.85f;
-        int track_buffer = 30;
-        float min_box_area = 10.0f;
+        int track_buffer = 100;
+        float min_box_area = 0.0f;
         bool fuse_score = true;
+        SceneGridConfig scene_grid;
     };
 
     struct OCSortModuleConfig {
@@ -196,7 +215,9 @@ namespace veilsight {
             std::vector<std::string> stun_servers;
             std::vector<std::string> cors_allowed_origins = {
                 "http://localhost:8000",
+                "http://127.0.0.1:8000",
                 "http://localhost:5173",
+                "http://127.0.0.1:5173",
             };
         };
 

@@ -2,6 +2,7 @@
 
 #include <inference/scrfd_detector.hpp>
 #include <inference/yunet_detector.hpp>
+#include <inference/yolox_detector.hpp>
 
 #include <algorithm>
 #include <stdexcept>
@@ -42,10 +43,30 @@ namespace veilsight {
         private:
             SCRFDModuleConfig cfg_;
         };
+
+        class YoloXDetectorFactory final : public IDetectorFactory {
+        public:
+            explicit YoloXDetectorFactory(YoloXModuleConfig cfg)
+                : cfg_(std::move(cfg)) {}
+
+            std::unique_ptr<IDetector> create() const override {
+                return std::make_unique<YoloXDetector>(cfg_);
+            }
+
+            int backend_threads() const override {
+                return std::max(1, cfg_.ncnn_threads);
+            }
+
+        private:
+            YoloXModuleConfig cfg_;
+        };
     }
 
     std::unique_ptr<IDetectorFactory> create_detector_factory(const DetectorModuleConfig& cfg) {
-        if (cfg.type.empty() || cfg.type == "yunet") {
+        if (cfg.type.empty() || cfg.type == "yolox") {
+            return std::make_unique<YoloXDetectorFactory>(cfg.yolox);
+        }
+        if (cfg.type == "yunet") {
             return std::make_unique<YuNetDetectorFactory>(cfg.yunet);
         }
         if (cfg.type == "scrfd") {

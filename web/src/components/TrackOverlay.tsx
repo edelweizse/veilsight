@@ -1,6 +1,17 @@
 import { useEffect, useRef } from "react";
 
-type Track = { id: number; x: number; y: number; w: number; h: number; score: number; occluded: boolean };
+type Track = {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  score: number;
+  occluded: boolean;
+  identity_key?: string;
+  identity_confidence?: number;
+  privacy_action?: string;
+};
 type Analytics = { width: number; height: number; tracks?: Track[] };
 
 export function TrackOverlay({ analytics }: { analytics?: Analytics }) {
@@ -18,14 +29,15 @@ export function TrackOverlay({ analytics }: { analytics?: Analytics }) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!analytics || !analytics.width || !analytics.height) return;
     ctx.scale(scale, scale);
-    const sx = rect.width / analytics.width;
-    const sy = rect.height / analytics.height;
+    const scaleToFit = Math.min(rect.width / analytics.width, rect.height / analytics.height);
+    const dx = (rect.width - analytics.width * scaleToFit) / 2;
+    const dy = (rect.height - analytics.height * scaleToFit) / 2;
     ctx.font = "12px system-ui";
     for (const track of analytics.tracks ?? []) {
-      const x = track.x * sx;
-      const y = track.y * sy;
-      const w = track.w * sx;
-      const h = track.h * sy;
+      const x = dx + track.x * scaleToFit;
+      const y = dy + track.y * scaleToFit;
+      const w = track.w * scaleToFit;
+      const h = track.h * scaleToFit;
       ctx.strokeStyle = track.occluded ? "#d98c00" : "#1f9d55";
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, w, h);
