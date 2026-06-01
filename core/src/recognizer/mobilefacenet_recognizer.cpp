@@ -438,6 +438,13 @@ namespace veilsight {
             return reasons;
         }
 
+        FaceDetectorRunConfig enrollment_run_config(const FaceDetectorModuleConfig& cfg) {
+            if (cfg.type == "yunet") {
+                return FaceDetectorRunConfig{std::max(1, cfg.yunet.input_w), std::max(1, cfg.yunet.input_h)};
+            }
+            return FaceDetectorRunConfig{std::max(1, cfg.scrfd.input_w), std::max(1, cfg.scrfd.input_h)};
+        }
+
         class MobileFaceNetRecognizer final : public IRecognizer {
         public:
             MobileFaceNetRecognizer(RecognizerModuleConfig cfg,
@@ -698,9 +705,7 @@ namespace veilsight {
 
         try {
             auto detector = create_face_detector(face_cfg);
-            FaceDetectorRunConfig run;
-            run.input_w = face_cfg.scrfd.input_w;
-            run.input_h = face_cfg.scrfd.input_h;
+            FaceDetectorRunConfig run = enrollment_run_config(face_cfg);
             const auto faces = detector ? detector->detect_faces(bgr, run) : std::vector<FaceObservation>{};
 
             ncnn::Net net;

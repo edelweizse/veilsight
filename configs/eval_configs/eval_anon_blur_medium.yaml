@@ -82,8 +82,8 @@ runtime:
 
   anonymizer:
     model_instances: 1
-    method: "pixelate"
-    pixelation_divisor: 10
+    method: "blur"
+    pixelation_divisor: 20
     blur_kernel: 50
     face_only_when_available: true
 
@@ -107,36 +107,36 @@ modules:
       decoded_output: false
 
     # YOLOX tiny alternative for a larger person detector.
-#     type: "yolox"
-#     model_instances: 5
-#     yolox:
-#       variant: "tiny"
-#       model_path: "models/people_detectors/yolox_tiny"
-#       param_path: "models/people_detectors/yolox_tiny/bytetrack_tiny.ncnn.param"
-#       bin_path: "models/people_detectors/yolox_tiny/bytetrack_tiny.ncnn.bin"
-#       input_w: 1088
-#       input_h: 608
-#       score_threshold: 0.35
-#       nms_threshold: 0.45
-#       top_k: 300
-#       class_id: 0
-#       ncnn_threads: 4
-#       letterbox: true
-#       decoded_output: false
+    #     type: "yolox"
+    #     model_instances: 5
+    #     yolox:
+    #       variant: "tiny"
+    #       model_path: "models/people_detectors/yolox_tiny"
+    #       param_path: "models/people_detectors/yolox_tiny/bytetrack_tiny.ncnn.param"
+    #       bin_path: "models/people_detectors/yolox_tiny/bytetrack_tiny.ncnn.bin"
+    #       input_w: 1088
+    #       input_h: 608
+    #       score_threshold: 0.35
+    #       nms_threshold: 0.45
+    #       top_k: 300
+    #       class_id: 0
+    #       ncnn_threads: 4
+    #       letterbox: true
+    #       decoded_output: false
 
     # UHD Variant S NCNN no-postprocess alternative.
     # Requires C++ postprocess in UhdDetector.
-#     type: "uhd"
-#     model_instances: 2
-#     uhd:
-#       variant: "s_anc8_w80_64x64_opencv_inter_nearest_static_nopost"
-#       model_path: "models/people_detectors/UHD/L"
-#       input_w: 64
-#       input_h: 64
-#       score_threshold: 0.15
-#       nms_threshold: 0.45
-#       top_k: 300
-#       ncnn_threads: 2
+  #     type: "uhd"
+  #     model_instances: 2
+  #     uhd:
+  #       variant: "s_anc8_w80_64x64_opencv_inter_nearest_static_nopost"
+  #       model_path: "models/people_detectors/UHD/L"
+  #       input_w: 64
+  #       input_h: 64
+  #       score_threshold: 0.15
+  #       nms_threshold: 0.45
+  #       top_k: 300
+  #       ncnn_threads: 2
 
   tracker:
     type: "bytetrack"
@@ -226,31 +226,31 @@ modules:
     # type: "none"
 
   recognizer:
-#    type: "noop"
-#    model_instances: 1
-#    gallery_path: ""
-#    unknown_threshold: 0.0
+    #    type: "noop"
+    #    model_instances: 1
+    #    gallery_path: ""
+    #    unknown_threshold: 0.0
 
     # MobileFaceNet recognizer alternative. Gallery DBs can be created with:
     # scripts/identity/init_mobilefacenet_gallery_db.py data/mobilefacenet_gallery.sqlite3
-     type: "mobilefacenet"
-     model_instances: 1
-     gallery_path: "data/mobilefacenet_gallery.sqlite3"
-     unknown_threshold: 0.45
-     param_path: "models/face_embeddings/mobilefacenet/mobilefacenets.param"
-     bin_path: "models/face_embeddings/mobilefacenet/mobilefacenets.bin"
-     input_blob: "data"
-     output_blob: "fc1"
-     input_w: 112
-     input_h: 112
-     embedding_dim: 128
-     ncnn_threads: 1
-     cache_ttl_frames: 900
-     min_face_score: 0.30
-     min_face_size_px: 0
-     min_inter_eye_px: 0
-     max_roll_deg: 180.0
-     max_yaw_offset_ratio: 0.99
+    type: "mobilefacenet"
+    model_instances: 1
+    gallery_path: "data/mobilefacenet_gallery.sqlite3"
+    unknown_threshold: 0.45
+    param_path: "models/face_embeddings/mobilefacenet/mobilefacenets.param"
+    bin_path: "models/face_embeddings/mobilefacenet/mobilefacenets.bin"
+    input_blob: "data"
+    output_blob: "fc1"
+    input_w: 112
+    input_h: 112
+    embedding_dim: 128
+    ncnn_threads: 1
+    cache_ttl_frames: 900
+    min_face_score: 0.30
+    min_face_size_px: 0
+    min_inter_eye_px: 0
+    max_roll_deg: 180.0
+    max_yaw_offset_ratio: 0.99
 
   identity:
     type: "passthrough"
@@ -273,8 +273,8 @@ streams:
   - id: "file0"
     type: "file"
     file:
-#      path: "../../../assets/P1E_S2_C1.mp4"
-      path: "../../../assets/output_small.mp4"
+      path: "../../../assets/P1E_S2_C1.mp4"
+      #      path: "../../../assets/output.mp4"
       fps: 5
       loop: true
     outputs:
@@ -299,31 +299,31 @@ streams:
       #   - "file0_b"
 
   # Webcam stream alternative.
-#   - id: "cam0"
-#     type: "webcam"
-#     webcam:
-#       device: "/dev/video0"
-#       width: 1280
-#       height: 720
-#       fps: 30
-#       mjpg: true
-#     outputs:
-#       fps: 5
-#       profiles:
-#         inference:
-#           width: 1088
-#           height: 608
-#           keep_aspect: true
-#           interp: "linear"
-#           format: "BGR"
-#         ui:
-#           width: 1280
-#           height: 720
-#           keep_aspect: true
-#           interp: "linear"
-#           jpeg_quality: 75
-#     replicate:
-#       count: 1
+  #   - id: "cam0"
+  #     type: "webcam"
+  #     webcam:
+  #       device: "/dev/video0"
+  #       width: 1280
+  #       height: 720
+  #       fps: 30
+  #       mjpg: true
+  #     outputs:
+  #       fps: 5
+  #       profiles:
+  #         inference:
+  #           width: 1088
+  #           height: 608
+  #           keep_aspect: true
+  #           interp: "linear"
+  #           format: "BGR"
+  #         ui:
+  #           width: 1280
+  #           height: 720
+  #           keep_aspect: true
+  #           interp: "linear"
+  #           jpeg_quality: 75
+  #     replicate:
+  #       count: 1
 
   # RTSP stream alternative.
   # - id: "rtsp0"

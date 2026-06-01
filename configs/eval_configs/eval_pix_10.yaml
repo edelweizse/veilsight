@@ -1,0 +1,69 @@
+# ChokePoint Evaluation Configuration
+dataset: ChokePoint
+system_id: veilsight
+
+paths:
+  base_config: configs/eval_anon_pixelate_weak.yaml
+  dataset_root: assets/chokepoint
+  output_root: results/pix_10
+  gallery_db: results/pix_10/gallery.sqlite3
+
+# Evaluation mode: process frames at target_fps from source_fps
+fps:
+  target: 5.0
+  source: 30.0
+
+# Gallery enrollment — all images from all sequences are enrolled
+enrollment:
+  ratio: 0.5                # fraction of people to enroll (0.5 = half)
+  face_angles_step: 5        # deprecated; all .pgm files across all sequences are enrolled
+  min_embeddings_per_id: 2   # deprecated; all .pgm files across all sequences are enrolled
+
+# Thresholds for metric computation
+thresholds:
+  face_iou: 0.15               # IoU threshold for matching detections to GT (match_mode=iou)
+  face_center_dist: 1.5        # max center distance / GT diagonal (match_mode=center)
+  match_mode: "center"         # "iou" or "center" — matching strategy for detection recall
+  anonymization_coverage: 0.8  # τ_GT_face from thesis Eq. 4.1
+  deadline_ms: 800.0
+
+# Current Label Studio exports use dense task frame IDs. The local JPEG/XML
+# files use sparse original ChokePoint frame IDs, so labels must be joined by
+# ordered task index unless a sequence explicitly overrides label_join.
+
+# Sequences to evaluate
+sequences:
+  - id: P1E_S2_C1
+    session: P1E_S2
+    frames_dir: assets/chokepoint/P1E_S2/P1E_S2_C1
+    groundtruth_xml: assets/chokepoint/groundtruth/P1E_S2_C1.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1E_S2_C1_chokepoint_format.json
+  - id: P1E_S2_C2
+    session: P1E_S2
+    frames_dir: assets/chokepoint/P1E_S2/P1E_S2_C2
+    groundtruth_xml: assets/chokepoint/groundtruth/P1E_S2_C2.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1E_S2_C2_chokepoint_format.json
+  - id: P1E_S2_C3
+    session: P1E_S2
+    frames_dir: assets/chokepoint/P1E_S2/P1E_S2_C3
+    groundtruth_xml: assets/chokepoint/groundtruth/P1E_S2_C3.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1E_S2_C3_chokepoint_format.json
+  - id: P1L_S3_C1
+    session: P1L_S3
+    frames_dir: assets/chokepoint/P1L_S3/P1L_S3_C1
+    groundtruth_xml: assets/chokepoint/groundtruth/P1L_S3_C1.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1L_S3_C1_chokepoint_format.json
+  - id: P1L_S3_C2
+    session: P1L_S3
+    frames_dir: assets/chokepoint/P1L_S3/P1L_S3_C2
+    groundtruth_xml: assets/chokepoint/groundtruth/P1L_S3_C2.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1L_S3_C2_chokepoint_format.json
+  - id: P1L_S3_C3
+    session: P1L_S3
+    frames_dir: assets/chokepoint/P1L_S3/P1L_S3_C3
+    groundtruth_xml: assets/chokepoint/groundtruth/P1L_S3_C3.xml
+    labels_json: assets/chokepoint/labels/labelstudio_tasks_annotations_P1L_S3_C3_chokepoint_format.json
+
+runtime:
+  evaluator_binary: build/apps/eval_chokepoint/veilsight_eval_chokepoint
+  enrollment_binary: build/apps/enroll_faces/enroll_faces

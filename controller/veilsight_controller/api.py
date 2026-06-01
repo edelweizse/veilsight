@@ -6,6 +6,7 @@ from typing import Annotated, Any
 import grpc
 import yaml
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
 from .analytics_models import (
     AnalyticsEvent,
@@ -38,6 +39,8 @@ from .models import (
     SaveConfigResponse,
     StreamsResponse,
 )
+from .render_models import RenderJobCreate, RenderJobStatus, RenderPreviewRequest, RenderSettingsResponse
+from .render_service import RenderService
 from .runner_client import RunnerClient, read_text, write_text
 from .settings import ControllerSettings, settings
 from .telemetry_cache import TelemetryCache
@@ -66,11 +69,16 @@ def get_gallery_service() -> GalleryService:
     return RunnerClientRegistry.gallery(settings)
 
 
+def get_render_service() -> RenderService:
+    return RunnerClientRegistry.render(settings)
+
+
 SettingsDep = Annotated[ControllerSettings, Depends(get_settings)]
 RunnerDep = Annotated[RunnerClient, Depends(get_runner)]
 CacheDep = Annotated[TelemetryCache, Depends(get_cache)]
 AnalyticsDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
 GalleryDep = Annotated[GalleryService, Depends(get_gallery_service)]
+RenderDep = Annotated[RenderService, Depends(get_render_service)]
 
 
 class RunnerClientRegistry:
@@ -78,6 +86,7 @@ class RunnerClientRegistry:
     cache = TelemetryCache()
     analytics_service: AnalyticsService | None = None
     gallery_service: GalleryService | None = None
+    render_service: RenderService | None = None
     _analytics_callback_registered = False
 
     @classmethod
@@ -104,6 +113,12 @@ class RunnerClientRegistry:
         if cls.gallery_service is None:
             cls.gallery_service = GalleryService(request_settings.gallery, GalleryStore(request_settings.gallery.db_path))
         return cls.gallery_service
+
+    @classmethod
+    def render(cls, request_settings: ControllerSettings) -> RenderService:
+        if cls.render_service is None:
+            cls.render_service = RenderService(request_settings)
+        return cls.render_service
 
 
 def payload_to_yaml(payload: ConfigPayload) -> str:
@@ -445,6 +460,46 @@ async def refresh_gallery(client: RunnerDep) -> GalleryRefreshResponse:
         accepted=bool(raw.get("accepted", False)),
         message=str(raw.get("message", "")),
     )
+
+
+@router.get("/api/renders/settings", response_model=RenderSettingsResponse)
+async def render_settings(request_settings: SettingsDep) -> RenderSettingsResponse:
+    return RenderSettingsResponse(
+        binary_path=str(request_settings.render.binary_path),
+        default_gallery_db=str(request_settings.gallery.db_path),
+    )
+
+
+@router.post("/api/renders/preview")
+async def render_preview(payload: RenderPreviewRequest, renders: RenderDep) -> Response:
+    data = await renders.preview_frame(payload.input_path)
+    return Response(content=data, media_type="image/jpeg")
+
+
+@router.post("/api/renders/jobs", response_model=RenderJobStatus)
+async def create_render_job(payload: RenderJobCreate, renders: RenderDep) -> RenderJobStatus:
+    return await renders.create_job(payload)
+
+
+@router.get("/api/renders/jobs", response_model=list[RenderJobStatus])
+async def list_render_jobs(renders: RenderDep) -> list[RenderJobStatus]:
+    return renders.list_jobs()
+
+
+@router.get("/api/renders/jobs/{job_id}", response_model=RenderJobStatus)
+async def get_render_job(job_id: str, renders: RenderDep) -> RenderJobStatus:
+    return renders.get_job(job_id)
+
+
+@router.get("/api/renders/jobs/{job_id}/preview.jpg")
+async def get_render_job_preview(job_id: str, renders: RenderDep) -> FileResponse:
+    path = renders.preview_jpeg(job_id)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/renders/jobs/{job_id}/cancel", response_model=RenderJobStatus)
+async def cancel_render_job(job_id: str, renders: RenderDep) -> RenderJobStatus:
+    return await renders.cancel_job(job_id)
 
 
 @router.get("/api/metrics")
