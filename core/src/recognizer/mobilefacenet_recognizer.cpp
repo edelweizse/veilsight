@@ -1,5 +1,7 @@
 #include <recognizer/recognizer.hpp>
 
+#include <common/ncnn_options.hpp>
+
 #include <face_detector/face_detector.hpp>
 
 #include <algorithm>
@@ -456,8 +458,7 @@ namespace veilsight {
                 if (!gallery_) gallery_ = std::make_shared<SharedGallery>();
                 if (!state_) state_ = std::make_shared<SharedTrackState>();
 
-                net_.opt.use_vulkan_compute = false;
-                net_.opt.num_threads = std::max(1, cfg_.ncnn_threads);
+                configure_ncnn_net(net_, cfg_.ncnn_threads);
                 workspace_pool_allocator_.set_size_compare_ratio(0.0f);
 
                 const std::string param = resolve_path_or_throw(cfg_.param_path);
@@ -709,8 +710,7 @@ namespace veilsight {
             const auto faces = detector ? detector->detect_faces(bgr, run) : std::vector<FaceObservation>{};
 
             ncnn::Net net;
-            net.opt.use_vulkan_compute = false;
-            net.opt.num_threads = std::max(1, recognizer_cfg.ncnn_threads);
+            configure_ncnn_net(net, recognizer_cfg.ncnn_threads);
             ncnn::PoolAllocator workspace_pool_allocator;
             workspace_pool_allocator.set_size_compare_ratio(0.0f);
             const std::string param = resolve_path_or_throw(recognizer_cfg.param_path);

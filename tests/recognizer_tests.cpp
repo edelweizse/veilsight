@@ -1,5 +1,7 @@
 #include <recognizer/recognizer.hpp>
 
+#include <common/ncnn_options.hpp>
+
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -115,8 +117,7 @@ namespace {
                                                   const veilsight::FramePtr& frame_ptr,
                                                   const veilsight::FaceObservation& face) {
         ncnn::Net net;
-        net.opt.use_vulkan_compute = false;
-        net.opt.num_threads = 1;
+        veilsight::configure_ncnn_net(net, 1);
         if (net.load_param(cfg.param_path.c_str()) != 0) {
             throw std::runtime_error("failed to load test MobileFaceNet param");
         }

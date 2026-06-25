@@ -1,5 +1,7 @@
 #include <face_detector/scrfd_detector.hpp>
 
+#include <common/ncnn_options.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -183,8 +185,7 @@ namespace veilsight {
                 throw std::invalid_argument("[SCRFD] Unsupported variant: " + cfg.variant);
             }
 
-            net_.opt.use_vulkan_compute = false;
-            net_.opt.num_threads = std::max(1, cfg.ncnn_threads);
+            configure_ncnn_net(net_, cfg.ncnn_threads);
             workspace_pool_allocator_.set_size_compare_ratio(0.0f);
 
             const std::string param = resolve_path_or_throw(cfg.param_path);
