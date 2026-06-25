@@ -63,4 +63,11 @@ target_link_libraries(veilsight_core PRIVATE Threads::Threads)
 
 # NCNN
 find_package(ncnn REQUIRED)
+get_target_property(NCNN_INCLUDE_DIRS ncnn INTERFACE_INCLUDE_DIRECTORIES)
+foreach(NCNN_INCLUDE_DIR IN LISTS NCNN_INCLUDE_DIRS)
+    if(NCNN_INCLUDE_DIR MATCHES "/include/ncnn$")
+        get_filename_component(NCNN_PARENT_INCLUDE_DIR "${NCNN_INCLUDE_DIR}" DIRECTORY)
+        target_include_directories(veilsight_core PUBLIC "${NCNN_PARENT_INCLUDE_DIR}")
+    endif()
+endforeach()
 target_link_libraries(veilsight_core PRIVATE ncnn)
