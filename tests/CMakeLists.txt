@@ -23,3 +23,56 @@ add_test(NAME veilsight_recognizer_tests COMMAND veilsight_recognizer_tests)
 add_executable(veilsight_pipeline_tests pipeline_tests.cpp)
 target_link_libraries(veilsight_pipeline_tests PRIVATE veilsight_core)
 add_test(NAME veilsight_pipeline_tests COMMAND veilsight_pipeline_tests)
+
+add_executable(veilsight_render_rules_tests render_rules_tests.cpp)
+target_link_libraries(veilsight_render_rules_tests PRIVATE veilsight_core)
+add_test(NAME veilsight_render_rules_tests COMMAND veilsight_render_rules_tests)
+
+add_executable(veilsight_render_mode_tests render_mode_tests.cpp)
+target_link_libraries(veilsight_render_mode_tests PRIVATE veilsight_core)
+add_test(NAME veilsight_render_mode_tests COMMAND veilsight_render_mode_tests)
+
+add_test(
+        NAME veilsight_render_video_cli_custom_requires_fps
+        COMMAND ${CMAKE_COMMAND}
+                -DRENDER_VIDEO=$<TARGET_FILE:veilsight_render_video>
+                -DCASE=custom_requires_fps
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/render_cli_custom_parse.mp4
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/render_video_cli_tests.cmake
+)
+
+add_test(
+        NAME veilsight_render_video_cli_source_accepts_no_fps
+        COMMAND ${CMAKE_COMMAND}
+                -DRENDER_VIDEO=$<TARGET_FILE:veilsight_render_video>
+                -DCASE=source_accepts_no_fps
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/render_cli_source_parse.mp4
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/render_video_cli_tests.cmake
+)
+
+add_test(
+        NAME veilsight_render_video_cli_mode_invalid
+        COMMAND ${CMAKE_COMMAND}
+                -DRENDER_VIDEO=$<TARGET_FILE:veilsight_render_video>
+                -DCASE=mode_invalid
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/render_cli_mode_invalid.mp4
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/render_video_cli_tests.cmake
+)
+
+add_test(
+        NAME veilsight_render_video_cli_mode_face_parsed
+        COMMAND ${CMAKE_COMMAND}
+                -DRENDER_VIDEO=$<TARGET_FILE:veilsight_render_video>
+                -DCASE=mode_face_parsed
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/render_cli_mode_face.mp4
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/render_video_cli_tests.cmake
+)
+
+add_test(
+        NAME veilsight_render_video_cli_mode_fb_default
+        COMMAND ${CMAKE_COMMAND}
+                -DRENDER_VIDEO=$<TARGET_FILE:veilsight_render_video>
+                -DCASE=mode_fb_default
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/render_cli_mode_fb.mp4
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/render_video_cli_tests.cmake
+)

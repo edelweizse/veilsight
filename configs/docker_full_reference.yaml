@@ -1,0 +1,186 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+controller:
+  host: "0.0.0.0"
+  port: 8000
+
+runner:
+  id: "edge-0"
+  grpc:
+    listen: "unix:///tmp/veilsight-runner.sock"
+    fallback_tcp: "127.0.0.1:9090"
+  public_base_url: "http://localhost:8080"
+
+streaming:
+  primary: "webrtc"
+  fallback: "mjpeg"
+  codec: "h264"
+  encoder: "auto"
+  bitrate_kbps: 6000
+  keyframe_interval_frames: 30
+  webrtc:
+    enabled: true
+    max_peers_per_stream: 2
+    ice_gathering_timeout_ms: 2000
+    session_idle_timeout_s: 30
+    stun_servers:
+      - "stun:stun.l.google.com:19302"
+    cors_allowed_origins:
+      - "http://localhost:8000"
+      - "http://127.0.0.1:8000"
+      - "http://localhost:5173"
+      - "http://127.0.0.1:5173"
+
+runtime:
+  reorder_window: 5
+  pending_state_limit: 500
+  jpeg_quality: 75
+  queues:
+    global:
+      person_detector_in_capacity: 50
+      face_detector_in_capacity: 50
+      recognizer_in_capacity: 50
+      identity_in_capacity: 50
+      anonymizer_in_capacity: 50
+    per_stream:
+      frames_in_capacity: 5
+      person_detections_in_capacity: 20
+      faces_in_capacity: 20
+      recognitions_in_capacity: 20
+      identities_in_capacity: 20
+      encoder_in_capacity: 5
+  anonymizer:
+    model_instances: 1
+    method: "pixelate"
+    pixelation_divisor: 10
+    blur_kernel: 50
+    face_only_when_available: true
+
+modules:
+  person_detector:
+    type: "yolox"
+    model_instances: 2
+    yolox:
+      variant: "nano"
+      model_path: "/opt/veilsight/models/people_detectors/yolox_nano"
+      param_path: "/opt/veilsight/models/people_detectors/yolox_nano/bytetrack_nano.ncnn.param"
+      bin_path: "/opt/veilsight/models/people_detectors/yolox_nano/bytetrack_nano.ncnn.bin"
+      input_w: 1088
+      input_h: 608
+      score_threshold: 0.01
+      nms_threshold: 0.7
+      top_k: 300
+      class_id: 0
+      ncnn_threads: 2
+      letterbox: true
+      decoded_output: false
+    uhd:
+      variant: "s_anc8_w80_64x64_opencv_inter_nearest_static_nopost"
+      model_path: "/opt/veilsight/models/people_detectors/UHD/ultratinyod_res_anc8_w80_64x64_opencv_inter_nearest_static_nopost"
+      input_w: 64
+      input_h: 64
+      score_threshold: 0.15
+      nms_threshold: 0.45
+      top_k: 300
+      ncnn_threads: 2
+
+  tracker:
+    type: "bytetrack"
+    bytetrack:
+      high_thresh: 0.25
+      low_thresh: 0.05
+      new_track_thresh: 0.25
+      match_iou_thresh: 0.30
+      low_match_iou_thresh: 0.50
+      unconfirmed_match_iou_thresh: 0.30
+      duplicate_iou_thresh: 0.85
+      track_buffer: 30
+      min_box_area: 0.0
+      fuse_score: false
+      scene_grid:
+        enabled: true
+        rows: 36
+        cols: 64
+        association_weight: 0.15
+        cell_distance_weight: 0.65
+        occupancy_weight: 0.15
+        transition_weight: 0.20
+        max_extra_cost: 0.30
+        occupancy_decay: 0.92
+        transition_decay: 0.98
+        warmup_frames: 5
+
+  face_detector:
+    enabled: true
+    type: "scrfd"
+    association_mode: "independent"
+    model_instances: 2
+    scrfd:
+      variant: "2gl"
+      param_path: "/opt/veilsight/models/face_detectors/scrfd/2g/scrfd_2g_l_opt.ncnn.param"
+      bin_path: "/opt/veilsight/models/face_detectors/scrfd/2g/scrfd_2g_l_opt.ncnn.bin"
+      input_w: 640
+      input_h: 640
+      score_threshold: 0.45
+      nms_threshold: 0.30
+      top_k: 100
+      ncnn_threads: 2
+
+  recognizer:
+    type: "mobilefacenet"
+    model_instances: 1
+    gallery_path: "/opt/veilsight/data/mobilefacenet_gallery.sqlite3"
+    unknown_threshold: 0.45
+    param_path: "/opt/veilsight/models/face_embeddings/mobilefacenet/mobilefacenets.param"
+    bin_path: "/opt/veilsight/models/face_embeddings/mobilefacenet/mobilefacenets.bin"
+    input_blob: "data"
+    output_blob: "fc1"
+    input_w: 112
+    input_h: 112
+    embedding_dim: 128
+    ncnn_threads: 1
+    cache_ttl_frames: 900
+    min_face_score: 0.30
+    min_face_size_px: 0
+    min_inter_eye_px: 0
+    max_roll_deg: 180.0
+    max_yaw_offset_ratio: 0.99
+
+  identity:
+    type: "passthrough"
+    model_instances: 1
+    gallery_path: ""
+    unknown_threshold: 0.0
+
+metrics:
+  enabled: true
+  enable_http: true
+  enable_ui_payload: true
+  log_interval_ms: 5000
+
+streams:
+  - id: "file0"
+    type: "file"
+    file:
+      path: "/opt/veilsight/assets/output.mp4"
+      fps: 5
+      loop: true
+    outputs:
+      fps: 5
+      profiles:
+        inference:
+          width: 1088
+          height: 608
+          keep_aspect: true
+          interp: "linear"
+          format: "BGR"
+        ui:
+          width: 1280
+          height: 720
+          keep_aspect: true
+          interp: "linear"
+          jpeg_quality: 75
+    replicate:
+      count: 1

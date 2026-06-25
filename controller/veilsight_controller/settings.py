@@ -69,6 +69,13 @@ class GallerySettings:
         self.max_image_bytes = _env_int("VEILSIGHT_GALLERY_MAX_IMAGE_BYTES", 8 * 1024 * 1024)
 
 
+class RenderSettings:
+    def __init__(self) -> None:
+        self.binary_path = Path(
+            os.getenv("VEILSIGHT_RENDER_BINARY", "build/apps/render_video/veilsight_render_video")
+        ).resolve()
+
+
 class ControllerSettings:
     controller_id: str = "controller"
 
@@ -80,6 +87,7 @@ class ControllerSettings:
         self.web_dist = Path(os.getenv("VEILSIGHT_WEB_DIST", "web/dist")).resolve()
         self.analytics = AnalyticsSettings()
         self.gallery = GallerySettings()
+        self.render = RenderSettings()
 
 
 settings = ControllerSettings()

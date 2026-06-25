@@ -1,0 +1,30 @@
+# ChokePoint smoke eval config — single sequence (P1E_S2_C1), reduced frame rate.
+# Used for CPU vs Vulkan acceleration comparison.
+# Paths are relative to REPO_ROOT (/opt/veilsight inside the docker image).
+
+paths:
+  base_config: "configs/docker_full_reference.yaml"
+  output_root: "results/chokepoint_smoke"
+
+sequences:
+  - id: "P1E_S2_C1"
+    frames_dir: "assets/chokepoint/P1E_S2/P1E_S2_C1"
+    groundtruth_xml: "assets/chokepoint/groundtruth/P1E_S2_C1.xml"
+    labels_json: "assets/chokepoint/labels/labelstudio_tasks_annotations_P1E_S2_C1_chokepoint_format.json"
+
+fps:
+  source: 30.0
+  target: 2.0
+
+thresholds:
+  face_iou: 0.5
+  anonymization_coverage: 0.8
+
+enrollment:
+  ratio: 0.5
+  face_angles_step: 5
+  min_embeddings_per_id: 2
+
+runtime:
+  enrollment_binary: "build/apps/enroll_faces/enroll_faces"
+  evaluator_binary: "build/apps/eval_chokepoint/veilsight_eval_chokepoint"

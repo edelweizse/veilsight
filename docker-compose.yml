@@ -1,0 +1,17 @@
+services:
+  veilsight:
+    build:
+      context: .
+      target: veilsight-dev-eval
+      args:
+        NCNN_VULKAN: ${NCNN_VULKAN:-OFF}
+    image: veilsight:dev-eval
+    environment:
+      VEILSIGHT_NCNN_VULKAN: ${VEILSIGHT_NCNN_VULKAN:-0}
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    volumes:
+      - ./assets:/opt/veilsight/assets
+      - ./results:/opt/veilsight/results
+      - ./data:/opt/veilsight/data

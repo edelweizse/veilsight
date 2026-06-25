@@ -83,8 +83,8 @@ runtime:
   anonymizer:
     model_instances: 1
     method: "pixelate"
-    pixelation_divisor: 50
-    blur_kernel: 31
+    pixelation_divisor: 10
+    blur_kernel: 50
     face_only_when_available: true
 
 modules:
@@ -98,8 +98,8 @@ modules:
       bin_path: "models/people_detectors/yolox_nano/bytetrack_nano.ncnn.bin"
       input_w: 1088
       input_h: 608
-      score_threshold: 0.35
-      nms_threshold: 0.45
+      score_threshold: 0.01
+      nms_threshold: 0.7
       top_k: 300
       class_id: 0
       ncnn_threads: 2
@@ -152,16 +152,16 @@ modules:
     #   max_missed: 20
 
     bytetrack:
-      high_thresh: 0.45
-      low_thresh: 0.20
-      new_track_thresh: 0.45
-      match_iou_thresh: 0.35
-      low_match_iou_thresh: 0.25
-      unconfirmed_match_iou_thresh: 0.35
+      high_thresh: 0.25
+      low_thresh: 0.05
+      new_track_thresh: 0.25
+      match_iou_thresh: 0.30
+      low_match_iou_thresh: 0.50
+      unconfirmed_match_iou_thresh: 0.30
       duplicate_iou_thresh: 0.85
-      track_buffer: 100
+      track_buffer: 30
       min_box_area: 0.0
-      fuse_score: true
+      fuse_score: false
       scene_grid:
         enabled: true
         rows: 36
@@ -273,8 +273,8 @@ streams:
   - id: "file0"
     type: "file"
     file:
-      path: "../../../assets/cpdf_p2e_s5_c1.mp4"
-#      path: "../../../assets/output.mp4"
+#      path: "../../../assets/P1E_S2_C1.mp4"
+      path: "../../../assets/output_small.mp4"
       fps: 5
       loop: true
     outputs:

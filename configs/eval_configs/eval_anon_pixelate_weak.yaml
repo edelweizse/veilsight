@@ -1,7 +1,3 @@
-# Minimal evaluation config for MOT20 tracker benchmarking.
-# Only modules.person_detector and modules.tracker matter;
-# other sections are required to satisfy validate_config().
-
 server:
   host: "0.0.0.0"
   port: 8080
@@ -11,10 +7,10 @@ controller:
   port: 8000
 
 runner:
-  id: "eval"
+  id: "edge-0"
   grpc:
-    listen: "unix:///tmp/veilsight-eval.sock"
-    fallback_tcp: "127.0.0.1:9091"
+    listen: "unix:///tmp/veilsight-runner.sock"
+    fallback_tcp: "127.0.0.1:9090"
   public_base_url: "http://localhost:8080"
 
 streaming:
@@ -33,11 +29,15 @@ streaming:
       - "stun:stun.l.google.com:19302"
     cors_allowed_origins:
       - "http://localhost:8000"
+      - "http://127.0.0.1:8000"
+      - "http://localhost:5173"
+      - "http://127.0.0.1:5173"
 
 runtime:
   reorder_window: 5
   pending_state_limit: 500
   jpeg_quality: 75
+
   queues:
     global:
       person_detector_in_capacity: 50
@@ -52,26 +52,30 @@ runtime:
       recognitions_in_capacity: 20
       identities_in_capacity: 20
       encoder_in_capacity: 5
+
   anonymizer:
     model_instances: 1
     method: "pixelate"
     pixelation_divisor: 10
-    blur_kernel: 31
-    face_only_when_available: false
+    blur_kernel: 20
+    face_only_when_available: true
 
 modules:
   person_detector:
     type: "yolox"
-    model_instances: 1
+    model_instances: 2
     yolox:
       variant: "nano"
+      model_path: "models/people_detectors/yolox_nano"
+      param_path: "models/people_detectors/yolox_nano/bytetrack_nano.ncnn.param"
+      bin_path: "models/people_detectors/yolox_nano/bytetrack_nano.ncnn.bin"
       input_w: 1088
       input_h: 608
       score_threshold: 0.01
-      nms_threshold: 0.70
-      top_k: 1000
+      nms_threshold: 0.7
+      top_k: 300
       class_id: 0
-      ncnn_threads: 4
+      ncnn_threads: 2
       letterbox: true
       decoded_output: false
 
@@ -102,39 +106,74 @@ modules:
         warmup_frames: 5
 
   face_detector:
-    enabled: false
-    type: "none"
-    model_instances: 1
+    enabled: true
+    type: "scrfd"
+    association_mode: "independent"
+    model_instances: 2
+    scrfd:
+      variant: "2gl"
+      param_path: "models/face_detectors/scrfd/2g/scrfd_2g_l_opt.ncnn.param"
+      bin_path: "models/face_detectors/scrfd/2g/scrfd_2g_l_opt.ncnn.bin"
+      input_w: 640
+      input_h: 640
+      score_threshold: 0.45
+      nms_threshold: 0.30
+      top_k: 100
+      ncnn_threads: 2
 
   recognizer:
-    type: "noop"
+    type: "mobilefacenet"
     model_instances: 1
+    gallery_path: "data/mobilefacenet_gallery.sqlite3"
+    unknown_threshold: 0.45
+    param_path: "models/face_embeddings/mobilefacenet/mobilefacenets.param"
+    bin_path: "models/face_embeddings/mobilefacenet/mobilefacenets.bin"
+    input_blob: "data"
+    output_blob: "fc1"
+    input_w: 112
+    input_h: 112
+    embedding_dim: 128
+    ncnn_threads: 1
+    cache_ttl_frames: 900
+    min_face_score: 0.30
+    min_face_size_px: 0
+    min_inter_eye_px: 0
+    max_roll_deg: 180.0
+    max_yaw_offset_ratio: 0.99
 
   identity:
-    type: "noop"
+    type: "passthrough"
     model_instances: 1
+    gallery_path: ""
+    unknown_threshold: 0.0
 
 metrics:
-  enabled: false
-  enable_http: false
-  enable_ui_payload: false
+  enabled: true
+  enable_http: true
+  enable_ui_payload: true
   log_interval_ms: 5000
 
 streams:
-  - id: "dummy"
-    type: "webcam"
-    webcam:
-      device: "/dev/video0"
-      width: 640
-      height: 480
-      fps: 30
-      mjpg: true
+  - id: "file0"
+    type: "file"
+    file:
+      path: "../../../assets/P1E_S2_C1.mp4"
+      fps: 5
+      loop: true
     outputs:
       fps: 5
       profiles:
         inference:
-          width: 640
-          height: 480
+          width: 1088
+          height: 608
           keep_aspect: true
           interp: "linear"
           format: "BGR"
+        ui:
+          width: 1280
+          height: 720
+          keep_aspect: true
+          interp: "linear"
+          jpeg_quality: 75
+    replicate:
+      count: 1

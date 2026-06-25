@@ -164,6 +164,58 @@ function mockFetch(streams = [stream("cam0")], metrics: Record<string, unknown> 
     if (url === "/api/gallery/enrollment-candidates" && init?.method === "POST") return Response.json(candidateResponse);
     if (url === "/api/gallery/enrollment-candidates/from-stream" && init?.method === "POST") return Response.json(candidateResponse);
     if (url === "/api/gallery/refresh" && init?.method === "POST") return Response.json({ accepted: true, message: "gallery reloaded" });
+    if (url === "/api/renders/settings") return Response.json({ binary_path: "/tmp/render", default_gallery_db: "/tmp/gallery.sqlite3" });
+    if (url === "/api/renders/preview" && init?.method === "POST") return new Response(new Blob(["jpeg"], { type: "image/jpeg" }));
+    if (url === "/api/renders/jobs" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body));
+      return Response.json({
+        job_id: "job-1",
+        status: "succeeded",
+        created_at_ms: 1,
+        updated_at_ms: 2,
+        config_path: body.config_path,
+        input_path: body.input_path,
+        output_path: body.output_path,
+        gallery_db: body.gallery_db,
+        layers: body.layers,
+        rules_yaml_path: "/tmp/rules.yaml",
+        events_jsonl_path: "/tmp/veilsight_render.events.jsonl",
+        manifest_path: "/tmp/veilsight_render.manifest.json",
+        progress_frame: 30,
+        total_frames: 120,
+        progress_percent: 25,
+        preview_jpeg_path: "/tmp/latest.jpg",
+        preview_updated_at_ms: 10,
+        timing_mode: body.timing_mode,
+        render_mode: body.render_mode ?? "face+body",
+        no_gallery: body.no_gallery,
+        returncode: 0,
+        stderr_tail: "",
+        message: "render complete"
+      });
+    }
+    if (url === "/api/renders/jobs/job-1") {
+      return Response.json({
+        job_id: "job-1",
+        status: "succeeded",
+        created_at_ms: 1,
+        updated_at_ms: 2,
+        config_path: "/tmp/config.yaml",
+        input_path: "assets/output.mp4",
+        output_path: "/tmp/veilsight_render.mp4",
+        layers: ["tracks"],
+        events_jsonl_path: "/tmp/veilsight_render.events.jsonl",
+        progress_frame: 30,
+        total_frames: 120,
+        progress_percent: 25,
+        preview_jpeg_path: "/tmp/latest.jpg",
+        preview_updated_at_ms: 10,
+        timing_mode: "source",
+        no_gallery: true,
+        stderr_tail: "",
+        message: "render complete"
+      });
+    }
     if (url === "/api/pipeline/start") return Response.json({ accepted: true, status: { state: "running" } });
     if (url === "/api/analytics/rules" && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
@@ -211,6 +263,8 @@ describe("dashboard", () => {
     HTMLCanvasElement.prototype.toBlob = vi.fn((callback: BlobCallback) => callback(new Blob(["jpeg"], { type: "image/jpeg" })));
     HTMLCanvasElement.prototype.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    URL.createObjectURL = vi.fn(() => "blob:preview");
+    URL.revokeObjectURL = vi.fn();
   });
 
   afterEach(() => {
@@ -357,6 +411,172 @@ describe("dashboard", () => {
     await userEvent.click(screen.getByLabelText("Delete Lobby line"));
     await waitFor(() => expect(screen.queryByText("Lobby line")).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith("/api/analytics/rules/rule-1", { method: "DELETE" });
+  });
+
+  it("render tab submits selected layer flags", async () => {
+    const fetchMock = mockFetch();
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    await userEvent.click(screen.getByLabelText("Tracks"));
+    await userEvent.click(screen.getByLabelText("Faces"));
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/renders/jobs", expect.objectContaining({ method: "POST" })));
+    const createCall = fetchMock.mock.calls.find(([url]) => url === "/api/renders/jobs");
+    const body = JSON.parse(String(createCall?.[1]?.body));
+    expect(body.layers).toEqual(["tracks", "faces"]);
+    expect(body.output_path).toBe("/tmp/veilsight_render.mp4");
+    expect(body.timing_mode).toBe("source");
+    expect(body.render_mode).toBe("face+body");
+    expect(body.fps).toBeNull();
+    expect(body.no_gallery).toBe(true);
+    expect(body.gallery_db).toBeNull();
+  });
+
+  it("render no-gallery toggle disables gallery DB and submits false when cleared", async () => {
+    const fetchMock = mockFetch();
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    const galleryInput = screen.getByLabelText("Render gallery DB path");
+    expect(galleryInput).toBeDisabled();
+    await userEvent.click(screen.getByLabelText("No gallery: anonymize everyone"));
+    expect(galleryInput).not.toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+
+    const createCall = fetchMock.mock.calls.find(([url]) => url === "/api/renders/jobs");
+    const body = JSON.parse(String(createCall?.[1]?.body));
+    expect(body.no_gallery).toBe(false);
+    expect(body.gallery_db).toBe("/tmp/gallery.sqlite3");
+  });
+
+  it("render custom FPS mode submits numeric FPS", async () => {
+    const fetchMock = mockFetch();
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    await userEvent.click(screen.getByRole("button", { name: "Custom FPS" }));
+    await userEvent.clear(screen.getByLabelText("Render output FPS"));
+    await userEvent.type(screen.getByLabelText("Render output FPS"), "12.5");
+    await userEvent.selectOptions(screen.getByLabelText("Render preview update interval"), "10");
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+
+    const createCall = fetchMock.mock.calls.find(([url]) => url === "/api/renders/jobs");
+    const body = JSON.parse(String(createCall?.[1]?.body));
+    expect(body.timing_mode).toBe("custom");
+    expect(body.render_mode).toBe("face+body");
+    expect(body.fps).toBe(12.5);
+    expect(body.source_fps).toBe(null);
+    expect(body.preview_every_frames).toBe(10);
+  });
+
+  it("render drawing line and area creates rule payloads", async () => {
+    const fetchMock = mockFetch();
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    await userEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const image = await screen.findByAltText("Render preview");
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 100 });
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 100 });
+    fireEvent.load(image);
+
+    await userEvent.click(screen.getByTitle("Line rule"));
+    const canvas = document.querySelector("canvas.analytics-overlay");
+    expect(canvas).not.toBeNull();
+    fireEvent.click(canvas as HTMLCanvasElement, { clientX: 10, clientY: 10 });
+    fireEvent.click(canvas as HTMLCanvasElement, { clientX: 50, clientY: 50 });
+
+    await userEvent.click(screen.getByTitle("Area rule"));
+    fireEvent.click(canvas as HTMLCanvasElement, { clientX: 20, clientY: 20 });
+    fireEvent.click(canvas as HTMLCanvasElement, { clientX: 60, clientY: 20 });
+    fireEvent.click(canvas as HTMLCanvasElement, { clientX: 60, clientY: 60 });
+    fireEvent.doubleClick(canvas as HTMLCanvasElement, { clientX: 20, clientY: 60 });
+
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+    const createCall = fetchMock.mock.calls.find(([url]) => url === "/api/renders/jobs");
+    const body = JSON.parse(String(createCall?.[1]?.body));
+    expect(body.rules[0].kind).toBe("line");
+    expect(body.rules[0].geometry.points).toEqual([{ x: 10, y: 10 }, { x: 50, y: 50 }]);
+    expect(body.rules[1].kind).toBe("area");
+    expect(body.rules[1].geometry.points).toHaveLength(3);
+  });
+
+  it("completed render job displays MP4 and events paths", async () => {
+    const fetchMock = mockFetch();
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+
+    await waitFor(() => expect(screen.getAllByText("succeeded").length).toBeGreaterThan(0));
+    expect(screen.getByText("/tmp/veilsight_render.mp4")).toBeInTheDocument();
+    expect(screen.getByText("/tmp/veilsight_render.events.jsonl")).toBeInTheDocument();
+    expect(screen.getAllByText("30 / 120").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("25.0%").length).toBeGreaterThan(0);
+    expect(screen.getByAltText("Render preview")).toHaveAttribute("src", "/api/renders/jobs/job-1/preview.jpg?ts=10");
+  });
+
+  it("disables render rule drawing controls while a job is running", async () => {
+    const baseFetch = mockFetch();
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/renders/jobs" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return Response.json({
+          job_id: "job-running",
+          status: "running",
+          created_at_ms: 1,
+          updated_at_ms: 2,
+          config_path: body.config_path,
+          input_path: body.input_path,
+          output_path: body.output_path,
+          layers: body.layers,
+          progress_frame: 5,
+          total_frames: 100,
+          progress_percent: 5,
+          timing_mode: body.timing_mode,
+          render_mode: body.render_mode ?? "face+body",
+          no_gallery: body.no_gallery,
+          stderr_tail: "",
+          message: "render process started"
+        });
+      }
+      if (url === "/api/renders/jobs/job-running") {
+        return Response.json({
+          job_id: "job-running",
+          status: "running",
+          created_at_ms: 1,
+          updated_at_ms: 3,
+          config_path: "/tmp/config.yaml",
+          input_path: "assets/output.mp4",
+          output_path: "/tmp/veilsight_render.mp4",
+          layers: [],
+          progress_frame: 6,
+          total_frames: 100,
+          progress_percent: 6,
+          timing_mode: "source",
+          no_gallery: true,
+          stderr_tail: "",
+          message: "render process started"
+        });
+      }
+      return baseFetch(url, init);
+    });
+    global.fetch = fetchMock as any;
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Render" }));
+    await userEvent.click(screen.getByRole("button", { name: "Start render job" }));
+
+    await waitFor(() => expect(screen.getAllByText("running").length).toBeGreaterThan(0));
+    expect(screen.getByTitle("Line rule")).toBeDisabled();
+    expect(screen.getByTitle("Area rule")).toBeDisabled();
   });
 
   it("renders gallery identities and commits upload candidates", async () => {

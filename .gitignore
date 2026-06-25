@@ -15,3 +15,4 @@ web/dist/
 results/
 AGENTS.md
 chokepoint_eval
+.playwright-mcp

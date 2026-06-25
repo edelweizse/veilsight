@@ -48,6 +48,72 @@ export type AnalyticsRulePayload = {
   settings?: Record<string, unknown>;
 };
 
+export type RenderLayerOptions = {
+  tracks: boolean;
+  faces: boolean;
+  directions: boolean;
+  rules: boolean;
+  events: boolean;
+};
+
+export type RenderRule = {
+  id: string;
+  kind: "line" | "area";
+  name: string;
+  enabled: boolean;
+  geometry: { points?: Array<{ x: number; y: number }>; [key: string]: unknown };
+  settings: Record<string, unknown>;
+};
+
+export type RenderJobCreate = {
+  config_path: string;
+  input_path: string;
+  output_path: string;
+  gallery_db?: string | null;
+  layers: Array<keyof RenderLayerOptions>;
+  rules: RenderRule[];
+  overwrite: boolean;
+  timing_mode: "source" | "custom";
+  render_mode?: string;
+  fps?: number | null;
+  source_fps?: number | null;
+  no_gallery: boolean;
+  preview_every_frames?: number;
+};
+
+export type RenderJobStatus = {
+  job_id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  created_at_ms: number;
+  updated_at_ms: number;
+  config_path: string;
+  input_path: string;
+  output_path: string;
+  gallery_db?: string | null;
+  layers: Array<keyof RenderLayerOptions>;
+  rules_yaml_path?: string | null;
+  events_jsonl_path?: string | null;
+  manifest_path?: string | null;
+  progress_frame?: number | null;
+  total_frames?: number | null;
+  progress_percent?: number | null;
+  preview_jpeg_path?: string | null;
+  preview_updated_at_ms?: number | null;
+  timing_mode: "source" | "custom";
+  render_mode?: string;
+  no_gallery: boolean;
+  started_at_ms?: number | null;
+  finished_at_ms?: number | null;
+  returncode?: number | null;
+  stderr_tail: string;
+  message: string;
+};
+
+export type RenderSettingsResponse = {
+  binary_path: string;
+  default_gallery_db: string;
+};
+
 export type GalleryIdentity = {
   identity_key: string;
   display_name?: string | null;
@@ -96,6 +162,19 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(detail || response.statusText);
   }
   return response.json() as Promise<T>;
+}
+
+async function requestBlob(url: string, init?: RequestInit): Promise<Blob> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || response.statusText);
+  }
+  return response.blob();
+}
+
+export function renderJobPreviewUrl(job_id: string, updated?: number | null): string {
+  return `/api/renders/jobs/${encodeURIComponent(job_id)}/preview.jpg?ts=${updated ?? Date.now()}`;
 }
 
 export const api = {
@@ -183,4 +262,21 @@ export const api = {
       body: JSON.stringify({ enrollment_id, candidate_ids })
     }),
   refreshGallery: () => request<Record<string, unknown>>("/api/gallery/refresh", { method: "POST" })
+  ,
+  renderSettings: () => request<RenderSettingsResponse>("/api/renders/settings"),
+  renderPreview: (input_path: string) =>
+    requestBlob("/api/renders/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input_path })
+    }),
+  createRenderJob: (payload: RenderJobCreate) =>
+    request<RenderJobStatus>("/api/renders/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }),
+  renderJob: (job_id: string) => request<RenderJobStatus>(`/api/renders/jobs/${encodeURIComponent(job_id)}`),
+  cancelRenderJob: (job_id: string) =>
+    request<RenderJobStatus>(`/api/renders/jobs/${encodeURIComponent(job_id)}/cancel`, { method: "POST" })
 };

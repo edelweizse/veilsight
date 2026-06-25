@@ -29,6 +29,7 @@ namespace veilsight {
         blur_kernel_ = std::max(3, cfg.blur_kernel);
         if ((blur_kernel_ % 2) == 0) blur_kernel_ += 1;
         face_only_when_available_ = cfg.face_only_when_available;
+        strict_face_only_ = cfg.strict_face_only;
     }
 
     std::vector<AnonymizationRegion> Anonymizer::planned_regions(
@@ -44,6 +45,11 @@ namespace veilsight {
         for (const auto& b : boxes_inf_space) {
             if (b.privacy_action != "anonymize") continue;
             if (b.w <= 1.0f || b.h <= 1.0f) continue;
+
+            if (strict_face_only_ && face_only_when_available_ &&
+                (!b.face.has_value() || b.face->bbox.w <= 1.0f || b.face->bbox.h <= 1.0f)) {
+                continue;
+            }
 
             Box roi_box = b;
             bool using_face_roi = false;

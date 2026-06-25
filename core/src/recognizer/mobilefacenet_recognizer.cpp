@@ -1,5 +1,7 @@
 #include <recognizer/recognizer.hpp>
 
+#include <common/ncnn_options.hpp>
+
 #include <face_detector/face_detector.hpp>
 
 #include <algorithm>
@@ -438,6 +440,13 @@ namespace veilsight {
             return reasons;
         }
 
+        FaceDetectorRunConfig enrollment_run_config(const FaceDetectorModuleConfig& cfg) {
+            if (cfg.type == "yunet") {
+                return FaceDetectorRunConfig{std::max(1, cfg.yunet.input_w), std::max(1, cfg.yunet.input_h)};
+            }
+            return FaceDetectorRunConfig{std::max(1, cfg.scrfd.input_w), std::max(1, cfg.scrfd.input_h)};
+        }
+
         class MobileFaceNetRecognizer final : public IRecognizer {
         public:
             MobileFaceNetRecognizer(RecognizerModuleConfig cfg,
@@ -449,8 +458,7 @@ namespace veilsight {
                 if (!gallery_) gallery_ = std::make_shared<SharedGallery>();
                 if (!state_) state_ = std::make_shared<SharedTrackState>();
 
-                net_.opt.use_vulkan_compute = false;
-                net_.opt.num_threads = std::max(1, cfg_.ncnn_threads);
+                configure_ncnn_net(net_, cfg_.ncnn_threads);
                 workspace_pool_allocator_.set_size_compare_ratio(0.0f);
 
                 const std::string param = resolve_path_or_throw(cfg_.param_path);
@@ -698,14 +706,11 @@ namespace veilsight {
 
         try {
             auto detector = create_face_detector(face_cfg);
-            FaceDetectorRunConfig run;
-            run.input_w = face_cfg.scrfd.input_w;
-            run.input_h = face_cfg.scrfd.input_h;
+            FaceDetectorRunConfig run = enrollment_run_config(face_cfg);
             const auto faces = detector ? detector->detect_faces(bgr, run) : std::vector<FaceObservation>{};
 
             ncnn::Net net;
-            net.opt.use_vulkan_compute = false;
-            net.opt.num_threads = std::max(1, recognizer_cfg.ncnn_threads);
+            configure_ncnn_net(net, recognizer_cfg.ncnn_threads);
             ncnn::PoolAllocator workspace_pool_allocator;
             workspace_pool_allocator.set_size_compare_ratio(0.0f);
             const std::string param = resolve_path_or_throw(recognizer_cfg.param_path);

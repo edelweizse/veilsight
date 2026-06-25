@@ -21,6 +21,11 @@ namespace veilsight {
         // When true, anonymize the detected face ROI for anonymized tracks and
         // fall back to the full person box when no face is attached.
         bool face_only_when_available = false;
+
+        // When true (and face_only_when_available is also true), boxes without
+        // face data are skipped entirely — no body ROI fallback.
+        // Used by face-only rendering mode.
+        bool strict_face_only = false;
     };
 
     struct AnonymizationRegion {
@@ -71,5 +76,6 @@ namespace veilsight {
         int pixelation_divisor_ = 10;
         int blur_kernel_ = 31;
         bool face_only_when_available_ = false;
+        bool strict_face_only_ = false;
     };
 }

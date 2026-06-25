@@ -4,9 +4,12 @@ import {
   Camera,
   Check,
   CircleX,
+  Download,
   FileCheck,
+  Film,
   FolderOpen,
   GitCommitHorizontal,
+  Image,
   Layers,
   MousePointer2,
   Pencil,
@@ -24,11 +27,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnalyticsRule, AnalyticsSnapshot, DrawMode, OverlayLayers, Point } from "./analytics/types";
 import {
   api,
+  renderJobPreviewUrl,
   type ConfigFileInfo,
   type EnrollmentCandidateResponse,
   type GalleryEmbedding,
   type GalleryIdentity,
   type PipelineStatus,
+  type RenderJobStatus,
+  type RenderLayerOptions,
+  type RenderRule,
   type StreamInfo
 } from "./api/client";
 import { connectJsonWebSocket } from "./api/ws";
@@ -62,6 +69,18 @@ const defaultLayers: OverlayLayers = {
   events: true
 };
 
+const defaultRenderLayers: RenderLayerOptions = {
+  tracks: false,
+  faces: false,
+  directions: false,
+  rules: false,
+  events: false
+};
+
+function selectedRenderLayers(layers: RenderLayerOptions): Array<keyof RenderLayerOptions> {
+  return (Object.keys(layers) as Array<keyof RenderLayerOptions>).filter((key) => layers[key]);
+}
+
 function LayerToggles({ layers, onChange }: { layers: OverlayLayers; onChange: (layers: OverlayLayers) => void }) {
   const items: Array<[keyof OverlayLayers, string]> = [
     ["tracks", "Tracks"],
@@ -85,16 +104,16 @@ function LayerToggles({ layers, onChange }: { layers: OverlayLayers; onChange: (
   );
 }
 
-function DrawTools({ mode, onChange }: { mode: DrawMode; onChange: (mode: DrawMode) => void }) {
+function DrawTools({ mode, onChange, disabled = false }: { mode: DrawMode; onChange: (mode: DrawMode) => void; disabled?: boolean }) {
   return (
     <div className="tool-row" aria-label="Rule drawing tools">
-      <button className={mode === "select" ? "active" : ""} onClick={() => onChange("select")} title="Select">
+      <button className={mode === "select" ? "active" : ""} onClick={() => onChange("select")} title="Select" disabled={disabled}>
         <MousePointer2 size={16} />Select
       </button>
-      <button className={mode === "line" ? "active" : ""} onClick={() => onChange("line")} title="Line rule">
+      <button className={mode === "line" ? "active" : ""} onClick={() => onChange("line")} title="Line rule" disabled={disabled}>
         <GitCommitHorizontal size={16} />Line
       </button>
-      <button className={mode === "area" ? "active" : ""} onClick={() => onChange("area")} title="Area rule">
+      <button className={mode === "area" ? "active" : ""} onClick={() => onChange("area")} title="Area rule" disabled={disabled}>
         <AreaChart size={16} />Area
       </button>
     </div>
@@ -622,8 +641,360 @@ function GalleryView({ streams }: { streams: StreamInfo[] }) {
   );
 }
 
+function RenderLayerToggles({ layers, onChange }: { layers: RenderLayerOptions; onChange: (layers: RenderLayerOptions) => void }) {
+  const items: Array<[keyof RenderLayerOptions, string]> = [
+    ["tracks", "Tracks"],
+    ["faces", "Faces"],
+    ["directions", "Directions"],
+    ["rules", "Rules"],
+    ["events", "Events"]
+  ];
+  return (
+    <div className="toggle-grid" aria-label="Render layers">
+      {items.map(([key, label]) => (
+        <label key={key}>
+          <input type="checkbox" checked={layers[key]} onChange={(event) => onChange({ ...layers, [key]: event.target.checked })} />
+          {label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function RenderRuleList({ rules, onDelete }: { rules: RenderRule[]; onDelete: (ruleId: string) => void }) {
+  return (
+    <div className="rule-list" aria-label="Render rules">
+      {rules.length === 0 ? (
+        <div className="empty-inline">No render rules</div>
+      ) : (
+        rules.map((rule) => (
+          <div className="rule-row" key={rule.id}>
+            <div>
+              <strong>{rule.name}</strong>
+              <small>{rule.kind}</small>
+            </div>
+            <div className="rule-actions">
+              <button onClick={() => onDelete(rule.id)} title="Delete render rule" aria-label={`Delete ${rule.name}`}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function renderFrameLabel(job: RenderJobStatus | null) {
+  if (!job?.progress_frame) return "-";
+  return job.total_frames ? `${job.progress_frame} / ${job.total_frames}` : String(job.progress_frame);
+}
+
+function renderPercentLabel(job: RenderJobStatus | null) {
+  return job?.progress_percent !== undefined && job.progress_percent !== null ? `${job.progress_percent.toFixed(1)}%` : "";
+}
+
+function RenderPlayer({
+  previewUrl,
+  livePreviewUrl,
+  job,
+  imageSize,
+  renderRules,
+  renderLayers,
+  drawMode,
+  onImageLoad,
+  onCreateRule,
+  onUpdateRule
+}: {
+  previewUrl: string;
+  livePreviewUrl: string;
+  job: RenderJobStatus | null;
+  imageSize: { width: number; height: number };
+  renderRules: RenderRule[];
+  renderLayers: RenderLayerOptions;
+  drawMode: DrawMode;
+  onImageLoad: (width: number, height: number) => void;
+  onCreateRule: (kind: "line" | "area", points: Point[]) => void;
+  onUpdateRule: (ruleId: string, points: Point[]) => void;
+}) {
+  const activeRendering = job?.status === "queued" || job?.status === "running";
+  const showLive = Boolean(livePreviewUrl && (activeRendering || job?.status === "succeeded" || job?.status === "failed" || job?.status === "cancelled"));
+  const imageUrl = showLive ? livePreviewUrl : previewUrl;
+  const status = job?.status ?? "idle";
+  const snapshot: AnalyticsSnapshot | undefined = imageUrl && !showLive && !activeRendering && imageSize.width > 0 && imageSize.height > 0 ? {
+    stream: { stream_id: "render", profile: "preview" },
+    frame_id: 0,
+    timestamp_ms: 0,
+    width: imageSize.width,
+    height: imageSize.height,
+    counts: { active_tracks: 0, unique_tracks: 0 },
+    tracks: [],
+    heatmap: { rows: 1, cols: 1, values: [0], max_value: 0 },
+    density: { rows: 1, cols: 1, values: [0], max_value: 0 },
+    directions: [],
+    routes: [],
+    rules: renderRules.map((rule) => ({
+      ...rule,
+      stream_id: "render",
+      profile: "preview",
+      created_at_ms: 0,
+      updated_at_ms: 0
+    })),
+    recent_events: []
+  } : undefined;
+  const overlayLayers: OverlayLayers = {
+    tracks: renderLayers.tracks,
+    faces: renderLayers.faces,
+    heatmap: false,
+    density: false,
+    directions: renderLayers.directions,
+    routes: false,
+    rules: renderLayers.rules,
+    events: renderLayers.events
+  };
+
+  return (
+    <div className="render-preview">
+      <header className="render-player-status">
+        <strong>{status}</strong>
+        <span>Frame {renderFrameLabel(job)}</span>
+        {renderPercentLabel(job) && <span>{renderPercentLabel(job)}</span>}
+      </header>
+      {imageUrl ? (
+        <div className="video-wrap">
+          <img
+            className="stream-media"
+            src={imageUrl}
+            alt="Render preview"
+            onLoad={(event) => onImageLoad(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
+          />
+          {snapshot && (
+            <AnalyticsOverlay
+              snapshot={snapshot}
+              layers={overlayLayers}
+              drawMode={drawMode}
+              onCreateRule={onCreateRule}
+              onUpdateRule={(rule, points) => onUpdateRule(rule.id, points)}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="render-preview-empty"><Image size={22} />Preview frame</div>
+      )}
+    </div>
+  );
+}
+
+function RenderView({ configPath, configFiles }: { configPath: string; configFiles: ConfigFileInfo[] }) {
+  const [inputPath, setInputPath] = useState("assets/output.mp4");
+  const [renderConfigPath, setRenderConfigPath] = useState(configPath);
+  const [galleryDb, setGalleryDb] = useState("");
+  const [outputPath, setOutputPath] = useState("/tmp/veilsight_render.mp4");
+  const [overwrite, setOverwrite] = useState(false);
+  const [timingMode, setTimingMode] = useState<"source" | "custom">("source");
+  const [renderMode, setRenderMode] = useState("face+body");
+  const [fps, setFps] = useState("25");
+  const [sourceFps, setSourceFps] = useState("");
+  const [noGallery, setNoGallery] = useState(true);
+  const [previewEveryFrames, setPreviewEveryFrames] = useState(5);
+  const [layers, setLayers] = useState<RenderLayerOptions>(defaultRenderLayers);
+  const [drawMode, setDrawMode] = useState<DrawMode>("select");
+  const [renderRules, setRenderRules] = useState<RenderRule[]>([]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [job, setJob] = useState<RenderJobStatus | null>(null);
+  const [message, setMessage] = useState("");
+  const activeRendering = job?.status === "queued" || job?.status === "running";
+  const livePreviewUrl = job?.preview_updated_at_ms ? renderJobPreviewUrl(job.job_id, job.preview_updated_at_ms) : "";
+
+  useEffect(() => {
+    setRenderConfigPath((current) => current || configPath);
+  }, [configPath]);
+
+  useEffect(() => {
+    void api.renderSettings().then((settings) => {
+      setGalleryDb((current) => current || settings.default_gallery_db);
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!job || !["queued", "running"].includes(job.status)) return;
+    const timer = window.setInterval(() => {
+      void api.renderJob(job.job_id).then(setJob).catch((error) => setMessage(String(error)));
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [job]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  async function loadPreview() {
+    setMessage("");
+    const blob = await api.renderPreview(inputPath);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(blob));
+  }
+
+  function createRenderRule(kind: "line" | "area", points: Point[]) {
+    const count = renderRules.filter((rule) => rule.kind === kind).length + 1;
+    const rule: RenderRule = {
+      id: `rule_${Date.now()}_${count}`,
+      kind,
+      name: `${kind === "line" ? "Line" : "Area"} ${count}`,
+      enabled: true,
+      geometry: { points },
+      settings: kind === "line" ? { min_gap_ms: 1000 } : { dwell_threshold_s: 3.0 }
+    };
+    setRenderRules((current) => [...current, rule]);
+    setDrawMode("select");
+  }
+
+  function updateRenderRule(ruleId: string, points: Point[]) {
+    setRenderRules((current) => current.map((rule) => rule.id === ruleId ? { ...rule, geometry: { ...rule.geometry, points } } : rule));
+  }
+
+  async function startRender() {
+    setMessage("");
+    const created = await api.createRenderJob({
+      config_path: renderConfigPath,
+      input_path: inputPath,
+      output_path: outputPath,
+      gallery_db: noGallery ? null : galleryDb || null,
+      layers: selectedRenderLayers(layers),
+      rules: renderRules,
+      overwrite,
+      timing_mode: timingMode,
+      render_mode: renderMode,
+      fps: timingMode === "custom" ? Number(fps) : null,
+      source_fps: timingMode === "custom" && sourceFps ? Number(sourceFps) : null,
+      no_gallery: noGallery,
+      preview_every_frames: previewEveryFrames
+    });
+    setJob(created);
+  }
+
+  async function cancelRender() {
+    if (!job) return;
+    setJob(await api.cancelRenderJob(job.job_id));
+  }
+
+  return (
+    <section className="render-view">
+      <aside className="render-panel">
+        <h2><Film size={16} />Render</h2>
+        <label>
+          <span>Input video path</span>
+          <input aria-label="Render input video path" value={inputPath} onChange={(event) => setInputPath(event.target.value)} />
+        </label>
+        <label>
+          <span>Config file</span>
+          <select aria-label="Render config path" value={renderConfigPath} onChange={(event) => setRenderConfigPath(event.target.value)}>
+            {!renderConfigPath && <option value="">Choose a config</option>}
+            {configFiles.map((file) => <option value={file.path} key={file.path}>{file.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Gallery DB path</span>
+          <input aria-label="Render gallery DB path" value={galleryDb} disabled={noGallery} onChange={(event) => setGalleryDb(event.target.value)} />
+        </label>
+        <section>
+          <h2><FileCheck size={16} />Mode</h2>
+          <div className="segmented" aria-label="Render timing mode">
+            <button className={timingMode === "source" ? "active" : ""} onClick={() => setTimingMode("source")}>Original FPS</button>
+            <button className={timingMode === "custom" ? "active" : ""} onClick={() => setTimingMode("custom")}>Custom FPS</button>
+          </div>
+          {timingMode === "custom" && (
+            <div className="field-row">
+              <label>
+                <span>Output FPS</span>
+                <input aria-label="Render output FPS" type="number" min="0.01" step="0.01" value={fps} onChange={(event) => setFps(event.target.value)} />
+              </label>
+            </div>
+          )}
+          <div className="segmented" style={{ marginTop: 12 }} aria-label="Render anonymization mode">
+            <button className={renderMode === "face+body" ? "active" : ""} onClick={() => setRenderMode("face+body")}>Face + Body</button>
+            <button className={renderMode === "face" ? "active" : ""} onClick={() => setRenderMode("face")}>Face Only</button>
+          </div>
+          <label className="check-row">
+            <input aria-label="No gallery: anonymize everyone" type="checkbox" checked={noGallery} onChange={(event) => setNoGallery(event.target.checked)} />
+            <span>No gallery: anonymize everyone</span>
+          </label>
+          <label>
+            <span>Preview update interval</span>
+            <select aria-label="Render preview update interval" value={previewEveryFrames} onChange={(event) => setPreviewEveryFrames(Number(event.target.value))}>
+              <option value={1}>Every 1 frame</option>
+              <option value={5}>Every 5 frames</option>
+              <option value={10}>Every 10 frames</option>
+            </select>
+          </label>
+        </section>
+        <label>
+          <span>Output MP4 path</span>
+          <input aria-label="Render output MP4 path" value={outputPath} onChange={(event) => setOutputPath(event.target.value)} />
+        </label>
+        <label className="check-row">
+          <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
+          <span>Overwrite existing output</span>
+        </label>
+        <div className="editor-actions">
+          <button onClick={loadPreview}><Image size={16} />Preview</button>
+          <button aria-label="Start render job" onClick={startRender} disabled={!renderConfigPath || !inputPath || !outputPath}><Play size={16} />Start</button>
+          <button onClick={cancelRender} disabled={!job || !["queued", "running"].includes(job.status)}><CircleX size={16} />Cancel</button>
+        </div>
+      </aside>
+
+      <section className="render-canvas">
+        <RenderPlayer
+          previewUrl={previewUrl}
+          livePreviewUrl={livePreviewUrl}
+          job={job}
+          imageSize={imageSize}
+          renderRules={renderRules}
+          renderLayers={layers}
+          drawMode={activeRendering ? "select" : drawMode}
+          onImageLoad={(width, height) => setImageSize({ width, height })}
+          onCreateRule={createRenderRule}
+          onUpdateRule={updateRenderRule}
+        />
+      </section>
+
+      <aside className="render-panel">
+        <section>
+          <h2><Layers size={16} />Layers</h2>
+          <RenderLayerToggles layers={layers} onChange={setLayers} />
+          <DrawTools mode={drawMode} onChange={setDrawMode} disabled={activeRendering} />
+        </section>
+        <section>
+          <h2><TrendingUp size={16} />Rules</h2>
+          <RenderRuleList rules={renderRules} onDelete={(ruleId) => setRenderRules((current) => current.filter((rule) => rule.id !== ruleId))} />
+        </section>
+        <section>
+          <h2><Download size={16} />Job</h2>
+          {job ? (
+            <div className="render-job">
+              <div className="stat-row"><span>Status</span><strong>{job.status}</strong></div>
+              <div className="stat-row"><span>Frame</span><strong>{renderFrameLabel(job)}</strong></div>
+              <div className="stat-row"><span>Percent</span><strong>{renderPercentLabel(job) || "-"}</strong></div>
+              <div className="path-block"><span>MP4</span><code>{job.output_path}</code></div>
+              <div className="path-block"><span>Events</span><code>{job.events_jsonl_path || "-"}</code></div>
+              {job.stderr_tail && <pre>{job.stderr_tail}</pre>}
+              {job.status === "succeeded" && <div className="empty-inline">Completed output is ready</div>}
+            </div>
+          ) : (
+            <div className="empty-inline">No render job</div>
+          )}
+          {message && <pre>{message}</pre>}
+        </section>
+      </aside>
+    </section>
+  );
+}
+
 export function App() {
-  const [activeView, setActiveView] = useState<"monitor" | "gallery" | "config">("monitor");
+  const [activeView, setActiveView] = useState<"monitor" | "gallery" | "render" | "config">("monitor");
   const [health, setHealth] = useState<Record<string, unknown>>({});
   const [status, setStatus] = useState<PipelineStatus>({});
   const [streams, setStreams] = useState<StreamInfo[]>([]);
@@ -787,6 +1158,7 @@ export function App() {
           <nav className="top-nav" aria-label="Primary">
             <button className={activeView === "monitor" ? "active" : ""} onClick={() => setActiveView("monitor")}>Monitor</button>
             <button className={activeView === "gallery" ? "active" : ""} onClick={() => setActiveView("gallery")}>Gallery</button>
+            <button className={activeView === "render" ? "active" : ""} onClick={() => setActiveView("render")}>Render</button>
             <button className={activeView === "config" ? "active" : ""} onClick={() => setActiveView("config")}>Config</button>
           </nav>
           <span className="pill">Runner: {String((health as any).connection_state ?? "unknown")}</span>
@@ -861,6 +1233,8 @@ export function App() {
       </section>}
 
       {activeView === "gallery" && <GalleryView streams={streams} />}
+
+      {activeView === "render" && <RenderView configPath={configPath} configFiles={configFiles} />}
 
       {activeView === "config" && <section className="config-editor">
         <h2><FileCheck size={16} />Config</h2>
